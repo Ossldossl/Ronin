@@ -29,3 +29,9 @@ void* arena_alloc(arena_allocator_t* allocator)
     allocator->index++;
     return result;
 }
+
+void* arena_get(arena_allocator_t* allocator, int index) 
+{
+    if (index >= allocator->index) {return null;}
+    return ((char*)allocator->data) + index * allocator->size_of_type;
+}

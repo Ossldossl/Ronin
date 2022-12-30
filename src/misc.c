@@ -49,7 +49,7 @@ HANDLE get_file_handle(const char* file_name, bool write)
 
     if (hFile == INVALID_HANDLE_VALUE) 
     {
-        print_message(COLOR_RED, "ERROR: Fehler beim Öffnen der Datei: %s", file_name);
+        print_message(COLOR_RED, "ERROR: Fehler beim Öffnen der Datei: %s => %d", file_name, GetLastError());
         panic("\n");
     }
 

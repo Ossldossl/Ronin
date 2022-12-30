@@ -103,7 +103,44 @@ typedef enum {
 	TOKEN_EOF,
 	COUNT_TOKENS
 } token_type_t;
-static const char* token_names[COUNT_TOKENS+1];
+static const char* token_names[COUNT_TOKENS+1] = {
+	"TOKEN_PLUS",
+	"TOKEN_MINUS",
+	"TOKEN_MUL",
+	"TOKEN_DIV",
+	"TOKEN_MOD",
+	"TOKEN_SEMI",
+	"TOKEN_LT",      // <
+	"TOKEN_GT",	   // >
+
+	"TOKEN_LPAREN",  // (
+	"TOKEN_RPAREN",  // )
+
+	"TOKEN_SEQ",     // =
+	// comparison
+	"TOKEN_EQ",  	   // ==
+	"TOKEN_NEQ",     // !=
+	"TOKEN_LEQ",     // <=
+	"TOKEN_GEQ",     // >=
+
+	"TOKEN_AND",     // &&
+	"TOKEN_OR",      // ||
+	"TOKEN_BAND",    // &
+	"TOKEN_BOR",     // |
+	"TOKEN_XOR",     // ^
+	"TOKEN_FALSE",
+	"TOKEN_NULL",
+	"TOKEN_NOT",
+
+	"TOKEN_STRING_LITERAL",
+	"TOKEN_I_NUMBER_LITERAL",
+	"TOKEN_F_NUMBER_LITERAL",
+	"TOKEN_COMMENT",
+
+	"TOKEN_ERROR",
+	"TOKEN_EOF",
+	"COUNT_TOKENS",
+};
 
 typedef struct token {
     int line;
@@ -131,4 +168,5 @@ struct arena_allocator {
 arena_allocator_t* arena_new(int size_of_type, int capacity);
 void* arena_alloc(arena_allocator_t* allocator);
 void arena_destroy(arena_allocator_t* allocator);
+void* arena_get(arena_allocator_t* allocator, int index);
 #pragma endregion arena_allocator

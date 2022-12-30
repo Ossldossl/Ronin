@@ -1,7 +1,7 @@
 #include "include/misc.h"
 
 #define ADVANCE char c = advance(com); if ((c) == -1) { print_message(COLOR_RED, "ERROR: Unexpected EOF at %d:%d", com->line, com->col); panic("\n");}
-#define no_eof(c) if ((c) == -1) { print_message(COLOR_RED, "ERROR: Unexpected EOF at %d:%d", com->line, com->col); panic("\n"); }
+#define no_eof(c) if ((c) == true) { print_message(COLOR_RED, "ERROR: Unexpected EOF at %d:%d", com->line, com->col); panic("\n"); }
 #define ADVANCE_OR_RET_TRUE char c = advance(com); if ((c) == -1) { return true;}
 #define ADVANCE_OR_RET char c = advance(com); if ((c) == -1) { return;}
 
@@ -27,21 +27,25 @@ static char peek(compiler_t* com)
 
 static bool skip_until_newline(compiler_t* com) 
 {
+    char ch = 'h';
     ADVANCE_OR_RET_TRUE
+    ch = c;
     while (true) {
-        if (c == '\r') {
-            com->index += 2;
+        if (ch == 13) {
+            com->index += 1;
             com->col = 0;
             com->line++;
             return false;
         }
-        if (c == '\n') {
+        if (ch == '\n') {
             com->index++;
             com->line++;
             com->col = 0;
+            printf("skip: %c", ch);
             return false;
         }
         ADVANCE_OR_RET_TRUE
+        ch = c;
     }
 }
 
@@ -53,6 +57,7 @@ static int search_whitespace(compiler_t* com)
         index++;
         c = com->file_content[index];
     }
+    if (index == com->index) return com->index;
     return index - 1;
 }
 
@@ -68,7 +73,9 @@ static bool skip_whitespace_or_comment(compiler_t* com)
         if (c == '/') {
             ADVANCE_OR_RET_TRUE
             if (c == '/') {
-                skip_until_newline(com);
+
+                bool eof = skip_until_newline(com);
+                no_eof(eof);
                 continue;
             }
         }
@@ -108,33 +115,34 @@ static void parse_string_literal(compiler_t* com)
 
 static bool parse_hex_literal(compiler_t* com) 
 {
-    ADVANCE
     int next_whitespace_index = search_whitespace(com);
     int result = 0;
     int index = 0;
-
-    int i = 0;
-    for (i = next_whitespace_index - com->index; i == 0; i--) {
+    for (int i = next_whitespace_index - com->index; i > 0; i--) {
         char c = com->file_content[com->index + i];
         if (c == '_') continue;
-        if (c == '0') index++; continue;
+        if (c == '0') {index++; continue;}
 
         int digit = -1;
-        if      (c >= '1' && c <= '9') int digit = c - '0';
-        else if (c >= 'a' && c <= 'f') int digit = c - 'a';
-        else if (c >= 'A' && c <= 'F') int digit = c - 'A';
+        if      (c >= '1' && c <= '9') digit = c - '0';
+        else if (c >= 'a' && c <= 'f') digit = c - 'a' + 10;
+        else if (c >= 'A' && c <= 'F') digit = c - 'A' + 10;
         else {
-            print_message(COLOR_RED, "ERROR: Invalid character in Hex number literal: %c at %d:%d", c, com->line, com->index + i);
+            print_message(COLOR_RED, "ERROR: Invalid character in Hex number literal: %c (or %d) at %d:%d", c, c, com->line, com->index + i);
             panic("\n");
         }
         result += digit * pow(16, index);
         index++;
     }
-    TOKEN(next_whitespace_index - com->index, TOKEN_I_NUMBER_LITERAL)
+    if (index == 0) {
+        print_message(COLOR_RED, "ERROR: Invalid hex number at %d:%d", com->line, com->index);
+        panic("\n");
+    }
+    TOKEN(next_whitespace_index - com->index + 2, TOKEN_I_NUMBER_LITERAL)
     tok->value = result;
-    com->index = i;
-    print_message(COLOR_RED, "ERROR: Invalid hex number at %d:%d", com->line, com->index);
-    panic("\n");
+    com->col  += next_whitespace_index - com->index;
+    com->index = next_whitespace_index;
+    return false;
 }
 
 static bool parse_bin_literal(compiler_t* com) 
@@ -152,6 +160,7 @@ static bool parse_oct_literal(compiler_t* com)
 static bool parse_number_literal(compiler_t* com) 
 {
     char c = peek(com);
+    if (c == -1) { panic("EOF!");}
 
     switch (c) {
         case 'x': return parse_hex_literal(com);
@@ -222,7 +231,24 @@ void lexer_lex_file(compiler_t* com)
         #pragma endregion single_ops
         #pragma region two_char_ops
         if (c == '/') {
-            dToken('/', TOKEN_DIV, TOKEN_COMMENT)
+            c = peek(com);
+            if (c == '/') {
+                token_t *tok = arena_alloc(com->token_t_allocator);
+                tok->col = com->col;
+                tok->line = com->line;
+                tok->length = 2;
+                tok->type = TOKEN_COMMENT;
+                advance(com);
+                bool eof = skip_until_newline(com);
+                no_eof(eof);
+                continue;
+            }
+            token_t *tok = arena_alloc(com->token_t_allocator);
+            tok->col = com->col;
+            tok->line = com->line;
+            tok->length = 1;
+            tok->type = TOKEN_DIV;
+            continue;
         }
         if (c == '=') {
             dToken('=', TOKEN_SEQ, TOKEN_EQ)
@@ -250,5 +276,12 @@ void lexer_lex_file(compiler_t* com)
         if (c == '0') {        
             parse_number_literal(com);
         }
+    }
+
+    for (int i = 0; i <= com->token_t_allocator->index; i++) {
+        token_t* tok = arena_get(com->token_t_allocator, i);
+        if (tok == null) break;
+        const char* token_name = token_names[tok->type];
+        printf("%d: type: %s => %d\n", i, token_name, tok->value);
     }
 }
