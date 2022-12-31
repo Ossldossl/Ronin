@@ -12,17 +12,36 @@
 
 struct arena_allocator;
 typedef struct arena_allocator arena_allocator_t;
+struct vector;
+typedef struct vector vector_t;
 
 typedef struct compiler 
 {
+	char* file_path;
     char* file_content;
     int   file_size;
     int   index;
     int   col;
     int   line;
     bool  enable_colors;
+	vector_t* errors;
 	arena_allocator_t* token_t_allocator;
 } compiler_t;
+
+typedef struct error 
+{
+	bool is_warning;
+	int line;
+	int col;
+	int length;
+	char* message;
+} error_t;
+
+typedef struct string_builder 
+{
+	char* content;
+	int length;
+} string_builder_t;
 
 #define ASSERT(condition, error) \
 if (!(condition)) \
@@ -32,9 +51,22 @@ __debugbreak(); \
 panic("\n"); \
 }
 
+#define MAKE_ERROR(is_w, l, c, len, mes)            \
+error_t* err             = malloc(sizeof(error_t)); \
+         err->is_warning = is_w;                    \
+         err->line       = l;                       \
+         err->col        = c;                       \
+         err->length     = len;                     \
+         err->message    = mes;                     \
+vector_push(com->errors, err);                      \
+
 #define CHECK_ALLOCATION(var) ASSERT((var) != null, "ASSERTION FAILED: Out of memory!")
 
+string_builder_t* stringb_new(int length, char* content);
+void stringb_append(string_builder_t* stringb, char* content_to_append, int length_of_appendix);
+void stringb_free(string_builder_t* stringb);
 void print_message(int color, const char* const format, ...);
+void print_errors(compiler_t* com);
 __declspec(noreturn) void panic(const char* message);
 bool init_console(void);
 void write_file(const char* file_name, char* content, size_t size);
@@ -44,13 +76,13 @@ bool init_console(void);
 
 // --- vector ---
 #pragma region vector
-typedef struct
+struct vector
 {
 	void** data;
 	int size;
 	int used;
 	arena_allocator_t* allocator;
-} vector_t;
+};
 
 vector_t* vector_new(void);
 void vector_free(vector_t* vector);

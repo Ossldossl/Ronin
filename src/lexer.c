@@ -5,6 +5,7 @@
 #define ADVANCE_OR_RET_TRUE char c = advance(com); if ((c) == -1) { return true;}
 #define ADVANCE_OR_RET char c = advance(com); if ((c) == -1) { return;}
 
+
 static char advance(compiler_t* com)
 {
     if (com->index == com->file_size + 1) {
@@ -128,15 +129,17 @@ static bool parse_hex_literal(compiler_t* com)
         else if (c >= 'a' && c <= 'f') digit = c - 'a' + 10;
         else if (c >= 'A' && c <= 'F') digit = c - 'A' + 10;
         else {
-            print_message(COLOR_RED, "ERROR: Invalid character in Hex number literal: %c (or %d) at %d:%d", c, c, com->line, com->index + i);
-            panic("\n");
+            MAKE_ERROR(false, com->line, com->col + next_whitespace_index - com->index, 1, "error: Invalid character in Hex number literal")
+            TOKEN(next_whitespace_index - com->index, TOKEN_ERROR);
+            return false;
         }
         result += digit * pow(16, index);
         index++;
     }
     if (index == 0) {
-        print_message(COLOR_RED, "ERROR: Invalid hex number at %d:%d", com->line, com->index);
-        panic("\n");
+        MAKE_ERROR(false, com->line, com->col - 1, 2, "error: Hex number literal cannot be empty")
+        TOKEN(next_whitespace_index - com->index, TOKEN_ERROR);
+        return false;
     }
     TOKEN(next_whitespace_index - com->index + 2, TOKEN_I_NUMBER_LITERAL)
     tok->value = result;
@@ -240,7 +243,7 @@ void lexer_lex_file(compiler_t* com)
                 tok->type = TOKEN_COMMENT;
                 advance(com);
                 bool eof = skip_until_newline(com);
-                no_eof(eof);
+                if (eof) break;
                 continue;
             }
             token_t *tok = arena_alloc(com->token_t_allocator);

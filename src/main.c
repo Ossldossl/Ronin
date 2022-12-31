@@ -29,12 +29,13 @@ int main(int argc, char* argv[])
     com->line           = 1;
     com->col            = 1;
     com->enable_colors  = init_console();
+    com->errors         = vector_new();
 
     vector_t* file_names = parse_arguments(argc, &argv);
-
+    com->file_path = file_names->data[0];
     com->file_size = open_file(file_names->data[0], &com->file_content);
 
     lexer_lex_file(com);
-    
+    print_errors(com);
     return 0;
 }

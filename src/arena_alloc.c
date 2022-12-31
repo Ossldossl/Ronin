@@ -21,7 +21,6 @@ void arena_destroy(arena_allocator_t* allocator)
 void* arena_alloc(arena_allocator_t* allocator) 
 {
     if (allocator->index == allocator->capacity) {
-        printf("reallocated more memory\n");
         allocator->capacity = allocator->capacity * 1.5;
         allocator->data = realloc(allocator->data, allocator->capacity * allocator->size_of_type);
     }

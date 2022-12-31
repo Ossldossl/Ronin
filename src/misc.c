@@ -1,4 +1,48 @@
 #include "include/misc.h"
+#include <string.h>
+
+
+// use arena for allocation
+string_builder_t* stringb_new_warena(int length, char* content, arena_allocator_t* arena) 
+{
+    string_builder_t* result = arena_alloc(arena);
+    result->length = length;
+    result->content = content;
+    return result;
+}
+
+string_builder_t* stringb_new(int length, char* content) 
+{
+    string_builder_t* result = malloc(sizeof(string_builder_t));
+    result->length = length;
+    result->content = content;
+    return result;
+}
+
+// makes a copy of the string;
+char* stringb_to_cstring(string_builder_t* string_b) 
+{
+    char* result = malloc(string_b->length + 1);
+    memcpy_s(result, string_b->length + 1, string_b->content, string_b->length);
+    result[string_b->length] = '\0';
+    return result;
+}
+
+void stringb_append(string_builder_t* stringb, char* content_to_append, int length_of_appendix) 
+{
+    stringb->content = realloc(stringb->content, stringb->length + length_of_appendix + 1);
+    memmove_s(&stringb->content[stringb->length + 1], length_of_appendix + 1, content_to_append, length_of_appendix);
+    if (length_of_appendix > 0) {
+        stringb->length += length_of_appendix;
+    }
+    stringb->content[stringb->length + 1] = '\0';
+}
+
+void stringb_free(string_builder_t* stringb) 
+{
+    free(stringb->content);
+    free(stringb);
+}
 
 void print_message(int color, const char* const format, ...) {
     va_list argument_list;
@@ -9,6 +53,107 @@ void print_message(int color, const char* const format, ...) {
     wprintf(L"\x1B[0m");
 
     va_end(argument_list);
+}
+
+static void print_error(char* file_path, error_t* error, vector_t* lines) 
+{
+    print_message(COLOR_RED, "%s\n", error->message);
+    print_message(COLOR_BLUE, "\x09-->\x20%s\n", file_path);
+    
+    if (error->line != 1) {
+        print_message(COLOR_YELLOW, "%d| ", error->line - 1);
+        char* string_to_print1 = stringb_to_cstring(lines->data[error->line - 2]);
+        print_message(COLOR_WHITE, "%s\n", string_to_print1);
+        free(string_to_print1);
+    }
+
+    print_message(COLOR_YELLOW, "%d| ", error->line);
+    string_builder_t* line = lines->data[error->line - 1];
+
+    string_builder_t part_before_error = {.content=line->content, .length=line->length - (line->length - error->col) };
+    char* string_to_print2 = stringb_to_cstring(&part_before_error);
+    print_message(COLOR_WHITE, "%s", string_to_print2);
+
+    string_builder_t error_part = { &line->content[error->col], error->length };
+    char* string_to_print3 = stringb_to_cstring(&error_part);
+    wprintf(L"\x1b[%dm", 1); // bold
+    print_message(COLOR_RED, "%s", string_to_print3);
+    wprintf(L"\x1b[22m"); // removes bold
+
+    string_builder_t part_after_error = { 
+                                        &line->content[error->col + error->length], 
+                                        line->length - (error->col - 1 + error->length) };
+    char* string_to_print4 = stringb_to_cstring(&part_after_error);
+    print_message(COLOR_WHITE, "%s\n", string_to_print4);
+
+    int num_of_digits = log10(error->line) + error->col + 3;
+    // move cursor to the right by num_of_digits
+    wprintf(L"\x1b[%dC", num_of_digits);
+    
+    // set textcolor to red (better than calling print_message over and over)
+    wprintf(L"\x1b[%dm", COLOR_RED);
+    for (int i = 0; i < error->length; i++) {
+        printf("^");
+    }
+    printf(" %s\n", error->message);
+    wprintf(L"\x1b[%dm", COLOR_WHITE);
+
+    if (error->line != lines->used) {
+        print_message(COLOR_YELLOW, "%d| ", error->line + 1);
+        char* string_to_print5 = stringb_to_cstring(lines->data[error->line]); // because error->line +1 -1
+        print_message(COLOR_WHITE, "%s\n", string_to_print5);
+        free(string_to_print5);
+    }
+
+    free(string_to_print2);
+    free(string_to_print3);
+    free(string_to_print4);
+}
+
+static vector_t* parse_lines(char* file_content, int file_size) 
+{
+    vector_t* result = vector_new();
+    int   index       = 0;
+    char  c           = -1;
+    int   line_length = 0;
+    char* line_begin  = &file_content[0];
+    while (true) 
+    {
+        c = file_content[index];
+        if (c == '\0') {
+            string_builder_t* string_b = stringb_new(line_length, line_begin);
+            vector_push(result, string_b);
+            break;
+        }
+
+        if (c == '\r') {
+            index += 2;
+            string_builder_t* string_b = stringb_new(line_length, line_begin);
+            vector_push(result, string_b);
+            line_begin = &file_content[index];
+            line_length = 0;
+            continue;
+        } else if (c == '\n') {
+            index++;
+            string_builder_t* string_b = stringb_new(line_length, line_begin);
+            vector_push(result, string_b);
+            line_begin = &file_content[index];
+            line_length = 0;
+            continue;
+        }
+        line_length++;
+        index++;
+    }
+    return result;
+}
+
+void print_errors(compiler_t* com) 
+{
+    vector_t* lines = parse_lines(com->file_content, com->file_size);
+    for (int i = 0; i < len(com->errors); i++) {
+        print_error(com->file_path, com->errors->data[i], lines);
+        printf("\n");
+    }
 }
 
 __declspec(noreturn) void panic(const char* message) {
