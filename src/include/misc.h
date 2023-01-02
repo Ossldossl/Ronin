@@ -3,6 +3,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <math.h>
+#include <stdint.h>
 
 #define COLOR_RED 31
 #define COLOR_YELLOW 33
@@ -10,16 +11,18 @@
 #define COLOR_BLUE 34
 #define null NULL
 
+//#define PRINT_DEBUGS_
+
 struct arena_allocator;
 typedef struct arena_allocator arena_allocator_t;
 struct vector;
 typedef struct vector vector_t;
+typedef wchar_t rune;
 
 typedef struct compiler 
 {
 	char* file_path;
-    char* file_content;
-    int   file_size;
+    arena_allocator_t* utf8_file_content;
     int   index;
     int   col;
     int   line;
@@ -39,7 +42,7 @@ typedef struct error
 
 typedef struct string_builder 
 {
-	char* content;
+	rune* content;
 	int length;
 } string_builder_t;
 
@@ -61,10 +64,12 @@ error_t* err             = malloc(sizeof(error_t)); \
 vector_push(com->errors, err);                      \
 
 #define CHECK_ALLOCATION(var) ASSERT((var) != null, "ASSERTION FAILED: Out of memory!")
+#define len_arena(arena) (arena->index - 1)
 
-string_builder_t* stringb_new(int length, char* content);
-void stringb_append(string_builder_t* stringb, char* content_to_append, int length_of_appendix);
+string_builder_t* stringb_new(int length, rune* content);
+void stringb_append(string_builder_t* stringb, rune* content_to_append, int length_of_appendix);
 void stringb_free(string_builder_t* stringb);
+rune* stringb_to_cstring(string_builder_t* string_b) ;
 void print_message(int color, const char* const format, ...);
 void print_errors(compiler_t* com);
 __declspec(noreturn) void panic(const char* message);
@@ -181,7 +186,8 @@ typedef struct token {
 	int index;
     token_type_t type;
 	union {
-		int value;
+		int i_value;
+		string_builder_t* s_value;
 	};
 } token_t;
 

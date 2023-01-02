@@ -1,9 +1,10 @@
 #include "include/misc.h"
 #include <string.h>
-
+#include <io.h>
+#include <fcntl.h>
 
 // use arena for allocation
-string_builder_t* stringb_new_warena(int length, char* content, arena_allocator_t* arena) 
+string_builder_t* stringb_new_warena(int length, rune* content, arena_allocator_t* arena) 
 {
     string_builder_t* result = arena_alloc(arena);
     result->length = length;
@@ -11,7 +12,7 @@ string_builder_t* stringb_new_warena(int length, char* content, arena_allocator_
     return result;
 }
 
-string_builder_t* stringb_new(int length, char* content) 
+string_builder_t* stringb_new(int length, rune* content) 
 {
     string_builder_t* result = malloc(sizeof(string_builder_t));
     result->length = length;
@@ -20,15 +21,15 @@ string_builder_t* stringb_new(int length, char* content)
 }
 
 // makes a copy of the string;
-char* stringb_to_cstring(string_builder_t* string_b) 
+rune* stringb_to_cstring(string_builder_t* string_b) 
 {
-    char* result = malloc(string_b->length + 1);
-    memcpy_s(result, string_b->length + 1, string_b->content, string_b->length);
+    rune* result = malloc((string_b->length + 1) * sizeof(rune));
+    memcpy_s(result, (string_b->length + 1) * sizeof(rune), string_b->content, string_b->length * sizeof(rune));
     result[string_b->length] = '\0';
     return result;
 }
 
-void stringb_append(string_builder_t* stringb, char* content_to_append, int length_of_appendix) 
+void stringb_append(string_builder_t* stringb, rune* content_to_append, int length_of_appendix) 
 {
     stringb->content = realloc(stringb->content, stringb->length + length_of_appendix + 1);
     memmove_s(&stringb->content[stringb->length + 1], length_of_appendix + 1, content_to_append, length_of_appendix);
@@ -49,7 +50,7 @@ void print_message(int color, const char* const format, ...) {
     va_start(argument_list, format);
 
     wprintf(L"\x1B[%dm", color);
-    vfprintf(stderr, format, argument_list);
+    vfprintf(stdout, format, argument_list);
     wprintf(L"\x1B[0m");
 
     va_end(argument_list);
@@ -58,12 +59,12 @@ void print_message(int color, const char* const format, ...) {
 static void print_error(char* file_path, error_t* error, vector_t* lines) 
 {
     print_message(COLOR_RED, "%s\n", error->message);
-    print_message(COLOR_BLUE, "\x09-->\x20%s\n", file_path);
+    print_message(COLOR_BLUE, "-->\x20%s\n", file_path);
     
     if (error->line != 1) {
         print_message(COLOR_YELLOW, "%d| ", error->line - 1);
-        char* string_to_print1 = stringb_to_cstring(lines->data[error->line - 2]);
-        print_message(COLOR_WHITE, "%s\n", string_to_print1);
+        rune* string_to_print1 = stringb_to_cstring(lines->data[error->line - 2]);
+        print_message(COLOR_WHITE, "%ls\n", string_to_print1);
         free(string_to_print1);
     }
 
@@ -71,21 +72,22 @@ static void print_error(char* file_path, error_t* error, vector_t* lines)
     string_builder_t* line = lines->data[error->line - 1];
 
     string_builder_t part_before_error = {.content=line->content, .length=line->length - (line->length - error->col) };
-    char* string_to_print2 = stringb_to_cstring(&part_before_error);
-    print_message(COLOR_WHITE, "%s", string_to_print2);
+    rune* string_to_print2 = stringb_to_cstring(&part_before_error);
+    print_message(COLOR_WHITE, "%ls", string_to_print2);
 
     string_builder_t error_part = { &line->content[error->col], error->length };
-    char* string_to_print3 = stringb_to_cstring(&error_part);
+    rune* string_to_print3 = stringb_to_cstring(&error_part);
     wprintf(L"\x1b[%dm", 1); // bold
-    print_message(COLOR_RED, "%s", string_to_print3);
+    print_message(COLOR_RED, "%ls", string_to_print3);
     wprintf(L"\x1b[22m"); // removes bold
 
     string_builder_t part_after_error = { 
                                         &line->content[error->col + error->length], 
                                         line->length - (error->col - 1 + error->length) };
-    char* string_to_print4 = stringb_to_cstring(&part_after_error);
-    print_message(COLOR_WHITE, "%s\n", string_to_print4);
+    rune* string_to_print4 = stringb_to_cstring(&part_after_error);
+    print_message(COLOR_WHITE, "%ls\n", string_to_print4);
 
+                      //digits of linenumber               //+1 => '|'; +1 => ' ';
     int num_of_digits = log10(error->line) + error->col + 3;
     // move cursor to the right by num_of_digits
     wprintf(L"\x1b[%dC", num_of_digits);
@@ -100,8 +102,8 @@ static void print_error(char* file_path, error_t* error, vector_t* lines)
 
     if (error->line != lines->used) {
         print_message(COLOR_YELLOW, "%d| ", error->line + 1);
-        char* string_to_print5 = stringb_to_cstring(lines->data[error->line]); // because error->line +1 -1
-        print_message(COLOR_WHITE, "%s\n", string_to_print5);
+        rune* string_to_print5 = stringb_to_cstring(lines->data[error->line]); // because error->line +1 -1
+        print_message(COLOR_WHITE, "%ls\n", string_to_print5);
         free(string_to_print5);
     }
 
@@ -110,13 +112,13 @@ static void print_error(char* file_path, error_t* error, vector_t* lines)
     free(string_to_print4);
 }
 
-static vector_t* parse_lines(char* file_content, int file_size) 
+static vector_t* parse_lines(rune* file_content, int file_size) 
 {
     vector_t* result = vector_new();
     int   index       = 0;
     char  c           = -1;
     int   line_length = 0;
-    char* line_begin  = &file_content[0];
+    rune* line_begin  = &file_content[0];
     while (true) 
     {
         c = file_content[index];
@@ -149,7 +151,7 @@ static vector_t* parse_lines(char* file_content, int file_size)
 
 void print_errors(compiler_t* com) 
 {
-    vector_t* lines = parse_lines(com->file_content, com->file_size);
+    vector_t* lines = parse_lines(arena_get(com->utf8_file_content, 0), len_arena(com->utf8_file_content) - 1);
     for (int i = 0; i < len(com->errors); i++) {
         print_error(com->file_path, com->errors->data[i], lines);
         printf("\n");
@@ -172,12 +174,14 @@ bool init_console(void)
 	dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
 	if (!SetConsoleMode(hOut, dwMode))  { print_message(COLOR_RED, "ERROR: Fehler beim abrufen von SetConsoleMode: %lu", GetLastError()); }
 
-	if (!SetConsoleOutputCP(CP_UTF8))
+    // workaround für windows, da windows ein DOS 3.1 format benutzt ??
+    // CP_ACP anstatt UTF_8 obwohl sie eigentlich das selbe sein sollten ??
+	if (!SetConsoleOutputCP(CP_UTF7))
 	{
-        print_message(COLOR_YELLOW, "Warning: Failed to set Console to UTF-8 mode. Colors might not be displayed.\n");
+        print_message(COLOR_YELLOW, "Warning: Failed to set Console to UTF-8 mode. Colors and Unicode characters might not be displayed.\n");
 		return false;
 	}
-
+    system("chcp 65000"); // nur um sicher zu sein
     return true;
 }
 
