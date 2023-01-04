@@ -116,6 +116,7 @@ int main(int argc, char* argv[])
 {
     compiler_t* com = malloc(sizeof(compiler_t));
     com->utf8_file_content = null;
+    com->token_t_allocator = null;
     com->index             = 0;
     com->line              = 1;
     com->col               = 0;
@@ -130,6 +131,9 @@ int main(int argc, char* argv[])
     com->utf8_file_content = parse_file_content_to_utf8(raw_file_content, raw_file_size);
 
     lexer_lex_file(com);
+
+    parser_parse_tokens(com);
+
     print_errors(com);
     return 0;
 }

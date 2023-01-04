@@ -208,3 +208,10 @@ void* arena_alloc(arena_allocator_t* allocator);
 void arena_destroy(arena_allocator_t* allocator);
 void* arena_get(arena_allocator_t* allocator, int index);
 #pragma endregion arena_allocator
+
+// --- parser ---
+#pragma region parser
+
+void parser_parse_tokens(compiler_t* com);
+#pragma endregion parser
+

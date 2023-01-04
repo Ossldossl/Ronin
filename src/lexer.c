@@ -62,6 +62,26 @@ static int search_whitespace(compiler_t* com)
     return index - 1;
 }
 
+static bool is_whitespace(rune c) 
+{
+    return (c == '\x20' || c == '\x09' || c == '\x0D' || c == '\x0A');
+}
+
+static int get_end_of_number(compiler_t* com) 
+{
+    int index = com->index;
+    rune c = *((rune*)arena_get(com->utf8_file_content, index));
+    while (!is_whitespace(c) && index < len_arena(com->utf8_file_content)) {
+        if (c == '+' || c == '-' || c == '*' || c == '/' || c == ')' || c == ']') {
+            break;
+        }
+        index++;
+        c = *((rune*)arena_get(com->utf8_file_content, index));
+    }
+    if (index == com->index) return com->index;
+    return index - 1;
+}
+
 // returns true when eof reached
 static bool skip_whitespace_or_comment(compiler_t* com) 
 {
@@ -120,7 +140,7 @@ static void parse_string_literal(compiler_t* com)
 
 static bool parse_hex_literal(compiler_t* com) 
 {
-    int next_whitespace_index = search_whitespace(com);
+    int next_whitespace_index = get_end_of_number(com);
     int result = 0;
     int index = 0;
     for (int i = next_whitespace_index - com->index; i >= 0; i--) {
@@ -132,36 +152,99 @@ static bool parse_hex_literal(compiler_t* com)
         if      (c >= '1' && c <= '9') digit = c - '0';
         else if (c >= 'a' && c <= 'f') digit = c - 'a' + 10;
         else if (c >= 'A' && c <= 'F') digit = c - 'A' + 10;
+        else if (is_whitespace(c)) {
+            MAKE_ERROR(false, com->line, com->col - 2, 2, "error: Hexadecimal number literal cannot be empty")
+            TOKEN(next_whitespace_index - com->index, TOKEN_ERROR);
+            return false;
+        }
         else {
             int pos = ((next_whitespace_index - com->index) - i);
             MAKE_ERROR(false, com->line, com->col + (next_whitespace_index - com->index) - pos, 1, "error: Invalid character in Hex number literal")
             TOKEN(next_whitespace_index - com->index, TOKEN_ERROR);
+            tok->i_value = result;
+            com->col  += next_whitespace_index - com->index;
+            com->index = next_whitespace_index + 1;
             return false;
         }
         result += digit * pow(16, index);
         index++;
     }
-    if (index == 0) {
-        MAKE_ERROR(false, com->line, com->col - 1, 2, "error: Hex number literal cannot be empty")
-        TOKEN(next_whitespace_index - com->index, TOKEN_ERROR);
-        return false;
-    }
-    TOKEN(next_whitespace_index - com->index + 2, TOKEN_I_NUMBER_LITERAL)
+    TOKEN(next_whitespace_index - com->index + 1, TOKEN_I_NUMBER_LITERAL)
     tok->i_value = result;
     com->col  += next_whitespace_index - com->index;
-    com->index = next_whitespace_index;
+    com->index = next_whitespace_index + 1;
     return false;
 }
 
 static bool parse_bin_literal(compiler_t* com) 
 {
-    int len = 0;
+    int next_whitespace_index = get_end_of_number(com);
+    int result = 0;
+    int index = 0;
+    for (int i = next_whitespace_index - com->index; i >= 0; i--) {
+        char c = *((rune*)arena_get(com->utf8_file_content, com->index + i));;
+        if (c == '_') continue;
+        if (c == '0') {index++; continue;}
+
+        int digit = -1;
+        if      (c == '1' || c == '0') digit = c - '0';
+        else if (is_whitespace(c)) {
+            MAKE_ERROR(false, com->line, com->col - 2, 2, "error: Binary number literal cannot be empty")
+            TOKEN(next_whitespace_index - com->index, TOKEN_ERROR);
+            return false;
+        }
+        else {
+            int pos = ((next_whitespace_index - com->index) - i);
+            MAKE_ERROR(false, com->line, com->col + (next_whitespace_index - com->index) - pos, 1, "error: Invalid character in binary number literal")
+            TOKEN(next_whitespace_index - com->index, TOKEN_ERROR);
+            tok->i_value = result;
+            com->col  += next_whitespace_index - com->index;
+            com->index = next_whitespace_index + 1;
+            return false;
+        }
+        result += digit * pow(2, index);
+        index++;
+    }
+    TOKEN(next_whitespace_index - com->index + 1, TOKEN_I_NUMBER_LITERAL)
+    tok->i_value = result;
+    com->col  += next_whitespace_index - com->index;
+    com->index = next_whitespace_index + 1;
     return false;
 }
 
 static bool parse_oct_literal(compiler_t* com) 
 {
-    int len = 0;
+    int next_whitespace_index = get_end_of_number(com);
+    int result = 0;
+    int index = 0;
+    for (int i = next_whitespace_index - com->index; i >= 0; i--) {
+        char c = *((rune*)arena_get(com->utf8_file_content, com->index + i));;
+        if (c == '_') continue;
+        if (c == '0') {index++; continue;}
+
+        int digit = -1;
+        if      (c >= '1' && c <= '8') digit = c - '0';
+        else if (is_whitespace(c)) {
+            MAKE_ERROR(false, com->line, com->col - 2, 2, "error: Octal number literal cannot be empty")
+            TOKEN(next_whitespace_index - com->index, TOKEN_ERROR);
+            return false;
+        }
+        else {
+            int pos = ((next_whitespace_index - com->index) - i);
+            MAKE_ERROR(false, com->line, com->col + (next_whitespace_index - com->index) - pos, 1, "error: Invalid character in Octal number literal")
+            TOKEN(next_whitespace_index - com->index, TOKEN_ERROR);
+            tok->i_value = result;
+            com->col  += next_whitespace_index - com->index;
+            com->index = next_whitespace_index + 1;
+            return false;
+        }
+        result += digit * pow(8, index);
+        index++;
+    }
+    TOKEN(next_whitespace_index - com->index + 1, TOKEN_I_NUMBER_LITERAL)
+    tok->i_value = result;
+    com->col  += next_whitespace_index - com->index;
+    com->index = next_whitespace_index + 1;
     return false;
 }
 
@@ -169,16 +252,43 @@ static bool parse_number_literal(compiler_t* com)
 {
     char first_digit = advance(com);
 
+    int index = 0;
     if (first_digit == '0') {
         char c = advance(com);
-        if (c == 'x') return parse_hex_literal(com);
+        if      (c == 'x') return parse_hex_literal(com);
         else if (c == 'b') return parse_bin_literal(com);
         else if (c == 'o') return parse_oct_literal(com);
         else if (!(c >= '0' && c <= '9')) {
             MAKE_ERROR(false, com->line, com->col - 1, 1, "error: invalid format specifier for int literal.")
             TOKEN(1, TOKEN_ERROR)
         }   
+        com->index--;
+        com->col--;
     }
+    
+    com->index--;
+    com->col--;
+    int next_whitespace_index = get_end_of_number(com);
+    int result = 0;
+    for (int i = next_whitespace_index - com->index; i >= 0; i--) {
+        char c = *((rune*)arena_get(com->utf8_file_content, com->index + i));;
+        if (c == '_') continue;
+        if (c == '0') { index++; continue; }
+
+        int digit = -1;
+        if  (c >= '1' && c <= '9') digit = c - '0';
+        else {
+            break;
+        }
+        result += digit * pow(10, index);
+        index++;
+    }
+    com->col++;
+    TOKEN(next_whitespace_index - com->index + 1, TOKEN_I_NUMBER_LITERAL)
+    tok->i_value = result;
+    com->col  += next_whitespace_index - com->index ;
+    com->index = next_whitespace_index + 1;
+
     int len = 0;
     return false;
 }

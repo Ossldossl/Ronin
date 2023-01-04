@@ -9,7 +9,7 @@
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/src/main.exe",
-            "args": ["tests\\test1.rn"],
+            "args": ["tests\\test2.rn"],
             "stopAtEntry": false,
             "cwd": "${fileDirname}",
             "environment": [],
