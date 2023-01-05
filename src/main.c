@@ -117,6 +117,7 @@ int main(int argc, char* argv[])
     compiler_t* com = malloc(sizeof(compiler_t));
     com->utf8_file_content = null;
     com->token_t_allocator = null;
+    com->node_allocator    = null;
     com->index             = 0;
     com->line              = 1;
     com->col               = 0;

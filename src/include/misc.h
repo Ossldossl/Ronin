@@ -11,13 +11,15 @@
 #define COLOR_BLUE 34
 #define null NULL
 
-//#define PRINT_DEBUGS_
+#define PRINT_DEBUGS_
 
 struct arena_allocator;
 typedef struct arena_allocator arena_allocator_t;
 struct vector;
 typedef struct vector vector_t;
 typedef wchar_t rune;
+struct node;
+typedef struct node node_t;
 
 typedef struct compiler 
 {
@@ -29,6 +31,7 @@ typedef struct compiler
     bool  enable_colors;
 	vector_t* errors;
 	arena_allocator_t* token_t_allocator;
+	arena_allocator_t* node_allocator;
 } compiler_t;
 
 typedef struct error 
@@ -64,7 +67,7 @@ error_t* err             = malloc(sizeof(error_t)); \
 vector_push(com->errors, err);                      \
 
 #define CHECK_ALLOCATION(var) ASSERT((var) != null, "ASSERTION FAILED: Out of memory!")
-#define len_arena(arena) (arena->index - 1)
+#define len_arena(arena) (arena->index)
 
 string_builder_t* stringb_new(int length, rune* content);
 void stringb_append(string_builder_t* stringb, rune* content_to_append, int length_of_appendix);
@@ -211,6 +214,66 @@ void* arena_get(arena_allocator_t* allocator, int index);
 
 // --- parser ---
 #pragma region parser
+struct node;
+typedef struct node node_t;
+
+typedef enum node_type {
+	NODE_ROOT,
+	NODE_BINARY_EXPR,
+	NODE_UNARY_EXPR,
+	NODE_I_NUMBER_LITERAL,
+} node_type_t;
+
+typedef enum bin_expr_type {
+	BIN_ADD,
+	BIN_MINUS,
+	BIN_MUL,
+	BIN_DIV,
+	BIN_LT,
+	BIN_GT,
+	BIN_EQ,
+	BIN_NEQ,
+	BIN_LEQ,
+	BIN_GEQ,
+	BIN_AND,
+	BIN_OR,
+	BIN_BAND,
+	BIN_BOR,
+	BIN_XOR,
+} bin_expr_type_t;
+
+typedef struct node_bin_expr {
+	bin_expr_type_t type;
+	node_t* lhs;
+	node_t* rhs;
+	int line;
+	int col;
+	int length;
+} node_bin_expr_t;
+
+typedef enum un_expr_type {
+	UN_NEGATE,
+	UN_NOT,
+} un_expr_type_t;
+
+typedef struct node_unary_expr {
+	un_expr_type_t type;
+	node_t* rhs;
+	int line;
+	int col;
+	int length;
+} node_un_expr_t;
+
+typedef struct node {
+	node_type_t type;
+	union {
+		vector_t* 		  stmts;
+		node_un_expr_t    un_expr;
+		node_bin_expr_t   bin_expr;
+		string_builder_t* s_lit;
+		int 			  i_number_lit;
+	};
+} node_t;
 
 void parser_parse_tokens(compiler_t* com);
 #pragma endregion parser

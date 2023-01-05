@@ -21,8 +21,13 @@ void arena_destroy(arena_allocator_t* allocator)
 void* arena_alloc(arena_allocator_t* allocator) 
 {
     if (allocator->index == allocator->capacity) {
-        allocator->capacity = allocator->capacity * 1.5;
+        int cap = allocator->capacity * 1.5;
+        if (cap == allocator->capacity) cap += 1;
+        allocator->capacity = cap;
         allocator->data = realloc(allocator->data, allocator->capacity * allocator->size_of_type);
+        if (allocator->data == null) {
+            print_message(COLOR_RED, "FATAL ERROR: Failed to reallocate memory for arena with new size of %d!", allocator->capacity);
+        }
     }
     void* result = ((char*)allocator->data) + allocator->index * allocator->size_of_type;
     allocator->index++;

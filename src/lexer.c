@@ -8,7 +8,7 @@
 
 static rune advance(compiler_t* com)
 {
-    if (com->index == len_arena(com->utf8_file_content) + 1) {
+    if (com->index == len_arena(com->utf8_file_content)) {
         return 0; 
     }
     rune* result = arena_get(com->utf8_file_content, com->index);
@@ -19,7 +19,7 @@ static rune advance(compiler_t* com)
 
 static rune peek(compiler_t* com) 
 {
-    if (com->index == len_arena(com->utf8_file_content) + 1) {
+    if (com->index == len_arena(com->utf8_file_content)) {
         return 0;
     }
     rune* result = arena_get(com->utf8_file_content, com->index);
@@ -71,7 +71,7 @@ static int get_end_of_number(compiler_t* com)
 {
     int index = com->index;
     rune c = *((rune*)arena_get(com->utf8_file_content, index));
-    while (!is_whitespace(c) && index < len_arena(com->utf8_file_content)) {
+    while (!is_whitespace(c) && index < len_arena(com->utf8_file_content) - 1) {
         if (c == '+' || c == '-' || c == '*' || c == '/' || c == ')' || c == ']') {
             break;
         }
@@ -293,11 +293,13 @@ static bool parse_number_literal(compiler_t* com)
     return false;
 }
 
+// TODO: Parse floating point numbers
+// TODO: Parse identifiers and keywords like false, true etc.
 void lexer_lex_file(compiler_t* com)
 {
     com->token_t_allocator = arena_new(sizeof(token_t), 5);
 
-    while (com->index < len_arena(com->utf8_file_content) + 1) {
+    while (com->index < len_arena(com->utf8_file_content)) {
         ADVANCE_OR_BREAK
         if (c == '\r') {
             com->index++;
@@ -387,7 +389,7 @@ void lexer_lex_file(compiler_t* com)
             continue;
         }
         if (c == '|') {
-            dToken('|', TOKEN_BOR, TOKEN_OR)
+            dToken('|', TOKEN_BOR, TOKEN_OR);
             continue;
         }
         #pragma endregion two_char_ops
@@ -402,6 +404,7 @@ void lexer_lex_file(compiler_t* com)
             continue;
         }
     }
+    TOKEN(1, TOKEN_EOF);
 #ifdef PRINT_DEBUGS_
     for (int i = 0; i <= com->token_t_allocator->index; i++) {
         token_t* tok = arena_get(com->token_t_allocator, i);
