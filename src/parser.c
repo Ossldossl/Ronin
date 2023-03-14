@@ -2,6 +2,54 @@
 
 #define ROOT_NODE ((node_t*)arena_get(com->node_allocator, 0))
 
+void print_expr(node_t* node, int indent, int arms_to_draw, bool is_first, bool is_rhs)
+{
+    if (node == null) return;
+    // print arms and indent
+    printf("\x20");
+    for (int i = 0; i < indent; i++) {
+        wprintf(L"\x1b[%dC", 3);
+        if (i >= indent - arms_to_draw)
+            printf("|");
+    }
+
+    if (!is_first) {
+        printf("-->");
+    }
+
+    if (is_rhs)
+        arms_to_draw--;
+
+    switch (node->type) {
+        case NODE_BINARY_EXPR: {
+            // print type name
+            printf("%s: ", bin_expr_typenames[node->bin_expr.type]);
+            indent++;
+            arms_to_draw++;
+            printf("\n");
+            print_expr(node->bin_expr.lhs, indent, arms_to_draw, false, false);
+            printf("\n");
+            print_expr(node->bin_expr.rhs, indent, arms_to_draw, false, true);
+            return;
+        }
+        case NODE_I_NUMBER_LITERAL: {
+            printf("Literal: %d", node->i_number_lit);
+            return;
+        }
+        default: break;
+    }
+}
+
+void print_tree(node_t* root)
+{
+    int indent = 0;
+    int arms_to_draw = 0;
+    node_t* current_node = root;
+    if (current_node->type >= NODE_BINARY_EXPR && current_node->type <= NODE_I_NUMBER_LITERAL) {
+        print_expr(current_node, indent, arms_to_draw, true, false);
+    }
+} 
+
 token_t* consume(compiler_t* com) 
 {
     if (com->index == com->token_t_allocator->index + 1) {
@@ -37,8 +85,8 @@ bool match(compiler_t* com, token_type_t expected)
 
 node_t* make_bin_node(compiler_t* com, bin_expr_type_t type, node_t* lhs, node_t* rhs, int line, int col, int length) 
 {
-    node_t* result = arena_alloc(com->node_allocator);
-    result->type              = NODE_BINARY_EXPR;
+    node_t* result = malloc(sizeof(node_t));
+    result->type            = NODE_BINARY_EXPR;
     result->bin_expr.type   = type;
     result->bin_expr.lhs    = lhs;
     result->bin_expr.rhs    = rhs;
@@ -50,8 +98,8 @@ node_t* make_bin_node(compiler_t* com, bin_expr_type_t type, node_t* lhs, node_t
 
 node_t* make_unary_node(compiler_t* com, un_expr_type_t type, node_t* rhs, int line, int col, int length) 
 {
-    node_t* result = arena_alloc(com->node_allocator);
-    result->type            = NODE_UNARY_EXPR;
+    node_t* result = malloc(sizeof(node_t));
+    result->type           = NODE_UNARY_EXPR;
     result->un_expr.type   = type;
     result->un_expr.rhs    = rhs;
     result->un_expr.line   = line;
@@ -62,7 +110,7 @@ node_t* make_unary_node(compiler_t* com, un_expr_type_t type, node_t* rhs, int l
 
 node_t* make_value_node(compiler_t* com, int i_value) 
 {
-    node_t* result       = arena_alloc(com->node_allocator);
+    node_t* result       = malloc(sizeof(node_t));
     result->type         = NODE_I_NUMBER_LITERAL;
     result->i_number_lit = i_value;
     return result;
@@ -74,11 +122,10 @@ node_t* parser_parse_primary(compiler_t* com)
 {
     token_t* tok = consume(com);
     if (tok == null) return null;
-    if (tok->type == TOKEN_I_NUMBER_LITERAL)
-    {
+    else if (tok->type == TOKEN_I_NUMBER_LITERAL) {
         return make_value_node(com, tok->i_value);
-    }
-    if (tok->type == TOKEN_LPAREN) {
+    } 
+    else if (tok->type == TOKEN_LPAREN) {
         node_t* expr = parser_parse_expr(com);
         if (!match(com, TOKEN_RPAREN))
         {
@@ -87,6 +134,9 @@ node_t* parser_parse_primary(compiler_t* com)
             return null;
         }
         return expr;
+    } 
+    else {
+        MAKE_ERROR(false, tok->line, tok->col - 1, 1, "error: unexpected token in expression!")
     }
     return null;
 }
@@ -134,7 +184,9 @@ node_t* parser_parse_term(compiler_t* com)
         if (tok == null) return lhs;
         bin_expr_type_t op = 0;
         if (tok->type == TOKEN_PLUS) op = BIN_ADD;
-        else if (tok->type == TOKEN_MINUS) op = BIN_MINUS;
+        else if (tok->type == TOKEN_MINUS) {
+            op = BIN_MINUS;
+        }
         else break;
 
         consume(com);
@@ -258,9 +310,11 @@ void parser_parse_tokens(compiler_t* com)
         switch (tok->type) 
         {
             case TOKEN_I_NUMBER_LITERAL: {
-                // for now its awkward but when I add statements it'll get better
                 com->index--;
                 node_t* node = parser_parse_expr(com); 
+                if (com->errors->used == 0) {
+                    print_tree(node);
+                }
                 vector_push(ROOT_NODE->stmts, node);
                 continue;
             }

@@ -11,7 +11,7 @@
 #define COLOR_BLUE 34
 #define null NULL
 
-#define PRINT_DEBUGS_
+//#define PRINT_DEBUGS_
 
 struct arena_allocator;
 typedef struct arena_allocator arena_allocator_t;
@@ -241,6 +241,23 @@ typedef enum bin_expr_type {
 	BIN_BOR,
 	BIN_XOR,
 } bin_expr_type_t;
+static const char* bin_expr_typenames[15] = {
+	"BIN_ADD",
+	"BIN_MINUS",
+	"BIN_MUL",
+	"BIN_DIV",
+	"BIN_LT",
+	"BIN_GT",
+	"BIN_EQ",
+	"BIN_NEQ",
+	"BIN_LEQ",
+	"BIN_GEQ",
+	"BIN_AND",
+	"BIN_OR",
+	"BIN_BAND",
+	"BIN_BOR",
+	"BIN_XOR",
+};
 
 typedef struct node_bin_expr {
 	bin_expr_type_t type;

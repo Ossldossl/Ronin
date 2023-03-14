@@ -72,9 +72,6 @@ static int get_end_of_number(compiler_t* com)
     int index = com->index;
     rune c = *((rune*)arena_get(com->utf8_file_content, index));
     while (!is_whitespace(c) && index < len_arena(com->utf8_file_content) - 1) {
-        if (c == '+' || c == '-' || c == '*' || c == '/' || c == ')' || c == ']') {
-            break;
-        }
         index++;
         c = *((rune*)arena_get(com->utf8_file_content, index));
     }
@@ -195,7 +192,7 @@ static bool parse_bin_literal(compiler_t* com)
         }
         else {
             int pos = ((next_whitespace_index - com->index) - i);
-            MAKE_ERROR(false, com->line, com->col + (next_whitespace_index - com->index) - pos, 1, "error: Invalid character in binary number literal")
+            MAKE_ERROR(false, com->line, com->col + (next_whitespace_index - com->index) - pos, 1, "aerror: Invalid character in binary number literal")
             TOKEN(next_whitespace_index - com->index, TOKEN_ERROR);
             tok->i_value = result;
             com->col  += next_whitespace_index - com->index;
@@ -271,25 +268,25 @@ static bool parse_number_literal(compiler_t* com)
     int next_whitespace_index = get_end_of_number(com);
     int result = 0;
     for (int i = next_whitespace_index - com->index; i >= 0; i--) {
-        char c = *((rune*)arena_get(com->utf8_file_content, com->index + i));;
+        char c = advance(com);
         if (c == '_') continue;
         if (c == '0') { index++; continue; }
 
         int digit = -1;
         if  (c >= '1' && c <= '9') digit = c - '0';
         else {
+            com->index--;
+            com->col--;
             break;
         }
-        result += digit * pow(10, index);
+        result *= 10;
+        result += digit;
         index++;
     }
-    com->col++;
+
     TOKEN(next_whitespace_index - com->index + 1, TOKEN_I_NUMBER_LITERAL)
     tok->i_value = result;
-    com->col  += next_whitespace_index - com->index ;
-    com->index = next_whitespace_index + 1;
 
-    int len = 0;
     return false;
 }
 
