@@ -192,7 +192,7 @@ static bool parse_bin_literal(compiler_t* com)
         }
         else {
             int pos = ((next_whitespace_index - com->index) - i);
-            MAKE_ERROR(false, com->line, com->col + (next_whitespace_index - com->index) - pos, 1, "aerror: Invalid character in binary number literal")
+            MAKE_ERROR(false, com->line, com->col + (next_whitespace_index - com->index) - pos, 1, "error: Invalid character in binary number literal")
             TOKEN(next_whitespace_index - com->index, TOKEN_ERROR);
             tok->i_value = result;
             com->col  += next_whitespace_index - com->index;

@@ -1,7 +1,6 @@
 #include "include/misc.h"
 #include <string.h>
-#include <io.h>
-#include <fcntl.h>
+#include <locale.h>
 
 // use arena for allocation
 string_builder_t* stringb_new_warena(int length, rune* content, arena_allocator_t* arena) 
@@ -174,14 +173,7 @@ bool init_console(void)
 	dwMode |= ENABLE_VIRTUAL_TERMINAL_PROCESSING;
 	if (!SetConsoleMode(hOut, dwMode))  { print_message(COLOR_RED, "ERROR: Fehler beim abrufen von SetConsoleMode: %lu", GetLastError()); }
 
-    // workaround für windows, da windows ein DOS 3.1 format benutzt ??
-    // CP_ACP anstatt UTF_8 obwohl sie eigentlich das selbe sein sollten ??
-	if (!SetConsoleOutputCP(CP_UTF7))
-	{
-        print_message(COLOR_YELLOW, "Warning: Failed to set Console to UTF-8 mode. Colors and Unicode characters might not be displayed.\n");
-		return false;
-	}
-    system("chcp 65000"); // nur um sicher zu sein
+    setlocale(LC_CTYPE, "");
     return true;
 }
 

@@ -133,8 +133,11 @@ int main(int argc, char* argv[])
 
     lexer_lex_file(com);
 
-    parser_parse_tokens(com);
-
-    print_errors(com);
+    if (com->errors->used > 0) {
+        print_errors(com);
+    } else {
+        parser_parse_tokens(com);
+        print_errors(com);
+    }
     return 0;
 }

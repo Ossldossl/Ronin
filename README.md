@@ -246,7 +246,7 @@ rawptr
 // Typ Informationen
 typeid
 ```
-*String*	-> pointer + größe  
+*String*  -> pointer + größe  
 *CString* -> String wie in C
 
 
