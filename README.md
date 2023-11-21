@@ -1,11 +1,11 @@
 # The Ronin Programming Language
-``` code
+``` 
 CONST_VAL :: 123
 
 main :: fn(x: int, y: int) -> int {
-	var1: i32 = x * x
-	var2 := y * y
-	result = var1 * var2 + CONST_VAL
+	let var1: i32 = x * x;
+	let var2 = y * y;
+	let result = var1 * var2 + CONST_VAL;
 }
 ``` 
 
@@ -28,7 +28,7 @@ test2 :: enum {		          // Aufzählungstyp
 TEST3 :: 123.45               // Konstante mit inferiertem Typ
 TEST4:int : 0xabc123         // Konstante mit Typ-Angabe
 
-foo :: fn(a: u16) -> string {...} // Funktions deklaration
+foo :: fn(a: u16) -> str {...} // Funktions deklaration
 ```
 
 ### Arrays
@@ -40,7 +40,7 @@ array_1: []int = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
 Arrays als Parametertyp sehen so aus:
 ```
 main :: fn(array_1: []int, b: int) {
-	println(array_1[1])
+	println(array_1[0..<5])
 }
 ```
 Array-Slicing:
@@ -53,7 +53,7 @@ array_slice entspricht hier [2, 3, 4, 5]
 Funktionen in Ronin können mehrere Werte zurückgeben. Die Typen der Rückgabewerte werden in Klammern angegeben. 
 ```
 main :: fn(a: int, b: int) -> (int, bool) {...}
-                                 ^^^^^^^^^ Funktion gibt einen int und einen bool zurück
+                               ^^^^^^^^^ Funktion gibt einen int und einen bool zurück
 ```
 Wenn die Funktion keinen Wert zurückgibt:
 ```
@@ -63,7 +63,7 @@ main :: fn(foo: int, bar: int) {...}
 Wenn es nur einen Rückgabewert gibt, dann dürfen die Klammern weggelassen werden.
 ```
 main :: fn(argv: [..]String) -> int {...}
-								  ^^^ Funktion gibt einen int zurück
+							    ^^^ Funktion gibt einen int zurück
 ```
 Beim Aufruf von Funktionen kann der Parametername angegeben werden. 
 Wenn es Standartwerte für Funktionsparameter gibt, dann dürfen diese im Aufruf weggelassen werden. Default-Werte werden direkt neben den Parametert definitert.
@@ -76,7 +76,7 @@ make_point :: fn(x: f32 = 0.f, y: f32 = 0.f) -> Point {...}
 main :: fn() -> () {
 	foo(34, 35);
 	let point = make_point(x = 32); 
-	// 				 ^^ y kann weggelassen werden, da ein Defaultwert feststeht
+	// 				            ^^ y kann weggelassen werden, da ein Defaultwert feststeht
 }
 ```
 
@@ -240,14 +240,14 @@ Str impl Add<Str> {
 ## Grundtypen
 ```
 // ints
-int  i8 i16 i32 i64 i128
-uint u8 u16 u32 u64 u128
+i8 i16 i32 i64 i128
+u8 u16 u32 u64 u128
 
 // floats
 f16 f32 f64
 
 // strings
-str cstr
+Str Cstr
 
 bool
 ```
