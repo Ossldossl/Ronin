@@ -38,9 +38,14 @@ void stringb_append(string_builder_t* stringb, rune* content_to_append, int leng
     stringb->content[stringb->length + 1] = '\0';
 }
 
-void stringb_free(string_builder_t* stringb) 
+void stringb_free_c(string_builder_t* stringb) 
 {
     free(stringb->content);
+    free(stringb);
+}
+
+void stringb_free(string_builder_t* stringb) 
+{
     free(stringb);
 }
 

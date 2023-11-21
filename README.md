@@ -12,27 +12,27 @@ main :: fn(x: int, y: int) -> int {
 ## Syntax
 ### Deklarationen
 Beispiel:
-``` odin
+``` 
 test1 :: struct {             // Struktur definition
 	c_1: int,
 	c_2: float,
-	c_3: [..]int,
+	c_3: [5]int,
 }
 
 test2 :: enum {		          // Aufzählungstyp
 	STATUS_ACTIVE,
 	STATUS_LOADING,
-	STATUS_FINISHED
+	STATUS_FINISHED,
 }
 
 TEST3 :: 123.45               // Konstante mit inferiertem Typ
-TEST4 :int : 0xabc123         // Konstante mit Typ-Angabe
+TEST4:int : 0xabc123         // Konstante mit Typ-Angabe
 
-foo :: fn() -> string {...} // Funktions deklaration
+foo :: fn(a: u16) -> string {...} // Funktions deklaration
 ```
 
 ### Arrays
-In Ronin gibt es zwei verschiedene Array-Typen. "Normale" Arrays sind, im Gegensatz zu C Arrays, die eigentlich nur Pointer sind, ein Pointer + die Größe des Arrays. Die Größe muss zur Compile-Zeit bekannt sein.
+In Ronin gibt es zwei verschiedene Array-Typen. 
 ``` 
 array_1: []int = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
           ^^ Wert muss zur Compile-Zeit bekannt sein (kann aber inferiert werden)
@@ -43,7 +43,7 @@ main :: fn(array_1: []int, b: int) {
 	println(array_1[1])
 }
 ```
-Dies erlaubt Array-Slicing.
+Array-Slicing:
 ```
 array_slice := array_1[2..=5]
 ```
@@ -55,43 +55,31 @@ Funktionen in Ronin können mehrere Werte zurückgeben. Die Typen der Rückgabew
 main :: fn(a: int, b: int) -> (int, bool) {...}
                                  ^^^^^^^^^ Funktion gibt einen int und einen bool zurück
 ```
-Ein leeres Klammernpaar zeigt an, dass die Funktion keinen Wert zurück gibt (equivalent zu void in C). Der Rückgabetyp kann in diesem Fall auch weggelassen werden.
+Wenn die Funktion keinen Wert zurückgibt:
 ```
-main :: fn(foo: int, bar: int) -> () {...}
-									^^ Funktion gibt keinen Wert zurück
 main :: fn(foo: int, bar: int) {...}
-                                ^^ auch diese Funktion gibt nichts zurück
+                              ^ diese Funktion gibt nichts zurück
 ```
 Wenn es nur einen Rückgabewert gibt, dann dürfen die Klammern weggelassen werden.
 ```
 main :: fn(argv: [..]String) -> int {...}
 								  ^^^ Funktion gibt einen int zurück
 ```
-Beim Aufruf von Funktionen kann der Parameter name angegeben werden. Bsp:
-In einem Funktionsaufruf dürfen genannte und nicht genannte Parameter gemischt werden. Wenn Parameternamen genannt werden, dürfen diese auch in anderer Reihenfolge sein.
+Beim Aufruf von Funktionen kann der Parametername angegeben werden. 
+Wenn es Standartwerte für Funktionsparameter gibt, dann dürfen diese im Aufruf weggelassen werden. Default-Werte werden direkt neben den Parametert definitert.
+Bsp:
 ```
-foo :: fn(a: int, b: int) -> () {...}
+foo :: fn(a: int, b: int) {...}
 
-bar :: fn(a: int, b: int) 
+make_point :: fn(x: f32 = 0.f, y: f32 = 0.f) -> Point {...}
 
 main :: fn() -> () {
-	foo(a: 34, 35)
-        ^^^^^^^^^ Parameter a wird genannt, Parameter b nicht
-
-	foo(b: 123, 22)
-	    ^^^^^^^^^^ Erzeugt einen Fehler; nicht benannte Parameter müssen in der Reinfolge der Deklaration bleiben 
-
-	foo(b: 123, a: 22)
-		^^^^^^^^^^^^^ Alles gut
+	foo(34, 35);
+	let point = make_point(x = 32); 
+	// 				 ^^ y kann weggelassen werden, da ein Defaultwert feststeht
 }
 ```
 
-Um default-Werte für Funktionsparameter zu definieren, wird das Keyword 'with' benutzt.
-```
-create_rect :: fn(x: i32, y: i32, color: i32) -> ^Rect 
-	with {color = 0xFF00FF}
-
-```
 
 ### Strukturen
 Strukturen beinhalten 1 oder mehr Werte. Die Werte werden mit Kommas getrennt
@@ -135,7 +123,7 @@ main :: fn() -> () {
 	   ^^ ------ Werte innerhalb des Unions sind im Äußeren Scope
 }
 ```
-Strukturen können Initialisiert werden. Die Werte bestehen aus '.' und ihrem identifier. Der Wert, der den Feldern zugeordnet werden soll, kommt nach einem ':'.
+Strukturinitialisierungen:
 ```
 Vec2 :: struct {
 	x: int,
@@ -143,12 +131,21 @@ Vec2 :: struct {
 }
 
 main :: fn() -> () {
-	result: Vec2 = {.x: 34, .y: 35 }
-	                ^^^^^^  ^^^^^^ ---- x und y werden Initialisiert
+	result: Vec2 = {x = 34, y = 35 }
+	                ^^^^^^--^^^^^^ ---- x und y werden Initialisiert
 }
 ```
 ### Enumerationen
-Enumerationen in Ronin sind quasi Tagged Unions. Enums können Werte mit sich verbunden haben.
+Eine normaler Enumerationstyp sieht so aus:
+```
+GameState :: enum {
+	MainMenu,
+	Paused,
+	Loading,
+	Running,
+}
+```
+Enumerationen können Tagged Unions sein und so Werte mit sich verbunden haben.
 ```
 Result :: enum {
 	Ok(i32),
@@ -165,64 +162,81 @@ Result :: struct {
 	}
 }
 ```
+### Traits
+Trait definition:
+```
+Add :: trait {
+	add :: fn(self, other: Self) -> Self;
+}
+```
+Trait implementierung: 
+```
+Vector impl Add<i32> {
+	add :: fn(self, other: T) -> T {
+		// ...
+	}
+}
+```
+#### Trait als Begrenzungen für generische Typen
+Bei Funktions-, Strukturen-, und Enumdefinitionen kann man Beschränkungen für generische Parameter angeben. (=> Typen müssen einen oder mehrere Traits implementieren)
+```
+foo<T> :: fn(bar: []T) -> []T 
+	where T: Trait1 + Trait2;
+{
+	// ...
+}
+
+// Beide Varianten möglich
+bar<U: Trait1 + Trait2, V: Trait3 = DefaultValue> :: struct 
+{
+	a1: U,
+	a2: V,
+} 
+```
+
 ### Generische Typen
 Bei Funktionen:
 ```
-sum<T> :: fn(a: $T, b: $T)        -> $T {...}
+sum<T> :: fn(a: T, b: T) -> T {...}
 
-sum :: fn($T: type, a: $T, b: $T) -> $T {...}
-
-main :: fn(..) {
+main :: fn(args: []str) -> i32{
 	sum<i32>(34, 35)
-	sum(34, 35)
-
-	sum($i32, 34, 35)
+	//  ^^^ kann inferiert werden
 }
 ```
 
 Bei Strukturen:
 ```
-foo<T, U> :: struct {
-	a: $T,
-	b: $U,
-}
-
-foo :: struct($T, $U) {   // inkonsistent mit aufruf :(
-	a: $T,
-	b: $U,
+foo<T = i32, U> :: struct {
+//    ^^^^^ Default-Wert, d.h. kann im aufruf auch weggelassen werden	
+	a: T,
+	b: U,
 }
 
 main :: fn(..) {
-	let test: foo<i32, i64>                                // ✅
+	let test: foo<i32, i64>                                
 	let test1 = foo<i32, string> {.a = 34, .b = "35"} 
+}
+```
+Bei Traits
+```
+Add<Rhs = Self> :: trait {
+	add :: fn(self, other: Rhs) -> Self 
+}
 
-	let test: foo($i32, $i64) // sieht aus wie funktionsaufruf, also nein :(
-	let test1 = foo($i32, $string) {.a = 34, .b = "35"} 
+impl Add<Str> for Str {
+	add :: fn(self, other: Rhs) -> Self {
+
+	}
+}
+
+Str impl Add<Str> {
+	add :: fn(self, other: Rhs) -> Self {
+		// Füge beide strings zusammen
+	}
 }
 ```
 
-### Traits
-// TODO::
-
-
-#### Trait als Begrenzungen
-Bei Funktions-, Strukturen-, und Enumdefinitionen kann man Beschränkungen für generische Parameter angeben. (=> Typen müssen einen oder mehrere Traits implementieren)
-```
-foo :: trait {
-	do_sth :: fn() {...}
-}
-
-thing :: struct {
-	a: int, b: int
-}
-
-impl foo for thing {
-	do_sth :: fn() { return 34 + 35}
-}
-
-bar :: fn($T: type, b: i32) -> bool
-	where $T => foo
-```
 ## Grundtypen
 ```
 // ints
@@ -232,21 +246,10 @@ uint u8 u16 u32 u64 u128
 // floats
 f16 f32 f64
 
-rune  // signed 32-bit int
-      // steht für einen utf-8 char
-
 // strings
-string cstring
+str cstr
 
 bool
-
-// void* equivalent
-rawptr
-
-// Typ Informationen
-typeid
 ```
-*String*  -> pointer + größe  
-*CString* -> String wie in C
 
 

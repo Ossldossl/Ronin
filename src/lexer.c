@@ -54,9 +54,10 @@ static int search_whitespace(compiler_t* com)
 {
     int index = com->index;
     rune c = *((rune*)arena_get(com->utf8_file_content, index));
+    index++;
     while (c != '\n' && c != '\x20' && c != '\x09' && c != '\r' && index < len_arena(com->utf8_file_content)) {
-        index++;
         c = *((rune*)arena_get(com->utf8_file_content, index));
+        index++;
     }
     if (index == com->index) return com->index;
     return index - 1;
@@ -64,7 +65,7 @@ static int search_whitespace(compiler_t* com)
 
 static bool is_whitespace(rune c) 
 {
-    return (c == '\x20' || c == '\x09' || c == '\x0D' || c == '\x0A');
+    return (c == '\x20' || c == '\x09' || c == '\v');
 }
 
 static int get_end_of_number(compiler_t* com) 
@@ -119,7 +120,6 @@ static bool skip_whitespace_or_comment(compiler_t* com)
 static void parse_string_literal(compiler_t* com) 
 {
     int len = 0;
-    int index = com->index;
     rune* start = arena_get(com->utf8_file_content, com->index);
     while (true) {
         ADVANCE
@@ -131,8 +131,53 @@ static void parse_string_literal(compiler_t* com)
             return;
         }
         len++;
-        index++;
     }
+}
+
+static token_t* match_identifier(compiler_t* com, int start, int length, const char* rest, string_builder_t* string, token_type_t token)
+{
+    if (length == string->length && memcmp(&string->content[start], rest, length - start)) {
+        token_t *tok = arena_alloc(com->token_t_allocator);
+        tok->col = com->col;
+        tok->line = com->line;
+        tok->length = length;
+        tok->type = token;
+        stringb_free(string);
+        return tok;
+    } else {
+        TOKEN(string->length, TOKEN_IDENTIFIER);
+        return tok;
+    }
+}
+
+static token_t* choose_identifier_or_keyword(compiler_t* com, string_builder_t* string) 
+{
+    // TODO: Parse all keywords
+    rune c = string->content[0];
+    if (c == 'f') {
+        c = string->content[1];
+        if (c == 'a') return match_identifier(com, 2, 5, "lse", string, TOKEN_FALSE);
+        else return match_identifier(com, 0, 2, "fn", string, TOKEN_fn);
+    }
+}
+
+static void parse_identifier_or_keyword(compiler_t* com) 
+{
+    int len = 0;
+    string_builder_t* string = null;
+    rune* start = arena_get(com->utf8_file_content, com->index);
+    while (true) {
+        rune c = advance(com);
+        if (c == 0 || is_whitespace(c) || c == '\x0D' || c == '\x0A') {
+            com->index--;
+            com->col--;
+            string = stringb_new(len, start);
+            break;
+        }
+        len++;
+    }
+    if (len == 0 || string == null) return;
+    choose_identifier_or_keyword(com, string);
 }
 
 static bool parse_hex_literal(compiler_t* com) 
@@ -298,6 +343,9 @@ void lexer_lex_file(compiler_t* com)
 
     while (com->index < len_arena(com->utf8_file_content)) {
         ADVANCE_OR_BREAK
+        if (is_whitespace(c)) {
+            continue;
+        }
         if (c == '\r') {
             com->index++;
             com->line++;
@@ -305,7 +353,6 @@ void lexer_lex_file(compiler_t* com)
             continue;
         }
         if (c == '\n') {
-            com->index++;
             com->line++;
             com->col = 0;
             continue;
@@ -316,8 +363,8 @@ void lexer_lex_file(compiler_t* com)
             continue;
         }
         if (c == '-') {
-            TOKEN(1, TOKEN_MINUS)
-            continue;
+            dToken('>', TOKEN_MINUS, TOKEN_ARROW)
+            continue; 
         }
         if (c == '*') {
             TOKEN(1, TOKEN_MUL)
@@ -400,6 +447,18 @@ void lexer_lex_file(compiler_t* com)
             parse_number_literal(com);
             continue;
         }
+        com->index--;
+        com->col--;
+        parse_identifier_or_keyword(com);
+        /*print_message(COLOR_RED, "This should not be reached!\n");
+        token_t *tok = arena_alloc(com->token_t_allocator);
+        tok->col = com->col;
+        tok->line = com->line;
+        tok->length = search_whitespace(com) - com->index;
+        tok->type = TOKEN_ERROR;
+        MAKE_ERROR(false, com->line, com->col - 1, tok->length + 1, "error: Invalid Token ??")
+        com->index += tok->length;
+        com->col += tok->length;*/
     }
     TOKEN(1, TOKEN_EOF);
 #ifdef PRINT_DEBUGS_

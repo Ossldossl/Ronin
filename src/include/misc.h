@@ -11,7 +11,8 @@
 #define COLOR_BLUE 34
 #define null NULL
 
-//#define PRINT_DEBUGS_
+
+#define PRINT_DEBUGS_
 
 struct arena_allocator;
 typedef struct arena_allocator arena_allocator_t;
@@ -71,6 +72,7 @@ vector_push(com->errors, err);                      \
 
 string_builder_t* stringb_new(int length, rune* content);
 void stringb_append(string_builder_t* stringb, rune* content_to_append, int length_of_appendix);
+void stringb_free_c(string_builder_t* stringb);
 void stringb_free(string_builder_t* stringb);
 rune* stringb_to_cstring(string_builder_t* string_b) ;
 void print_message(int color, const char* const format, ...);
@@ -130,14 +132,24 @@ typedef enum {
 	TOKEN_BAND,    // &
 	TOKEN_BOR,     // |
 	TOKEN_XOR,     // ^
-	TOKEN_FALSE,
-	TOKEN_NULL,
-	TOKEN_NOT,
+	TOKEN_ARROW,   // ->
+	TOKEN_COL,     // :
+	TOKEN_FALSE,   // "false"
+	TOKEN_true,    // "true"
+	TOKEN_NULL,    // "null"
+	TOKEN_NOT,     // "not"
+	TOKEN_where,   // "where"
+	TOKEN_with,    // "with"
+	TOKEN_fn,      // "fn"
+	TOKEN_if,      // "if"
+	TOKEN_while,   // "while"
+	TOKEN_for,     // "for"
 
 	TOKEN_STRING_LITERAL,
 	TOKEN_I_NUMBER_LITERAL,
 	TOKEN_F_NUMBER_LITERAL,
 	TOKEN_COMMENT,
+	TOKEN_IDENTIFIER,
 
 	TOKEN_ERROR,
 	TOKEN_EOF,
@@ -168,14 +180,24 @@ static const char* token_names[COUNT_TOKENS+1] = {
 	"TOKEN_BAND",    // &
 	"TOKEN_BOR",     // |
 	"TOKEN_XOR",     // ^
-	"TOKEN_FALSE",
-	"TOKEN_NULL",
-	"TOKEN_NOT",
+	"TOKEN_ARROW",   // ->
+	"TOKEN_COL",     // :
+	"TOKEN_FALSE",   // "false"
+	"TOKEN_true",    // "true"
+	"TOKEN_NULL",    // "null"
+	"TOKEN_NOT",     // "not"
+	"TOKEN_where",   // "where"
+	"TOKEN_with",    // "with"
+	"TOKEN_fn",      // "fn"
+	"TOKEN_if",      // "if"
+	"TOKEN_while",   // "while"
+	"TOKEN_for",     // "for"
 
 	"TOKEN_STRING_LITERAL",
 	"TOKEN_I_NUMBER_LITERAL",
 	"TOKEN_F_NUMBER_LITERAL",
 	"TOKEN_COMMENT",
+	"TOKEN_IDENTIFIER",
 
 	"TOKEN_ERROR",
 	"TOKEN_EOF",

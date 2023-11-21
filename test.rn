@@ -1,0 +1,90 @@
+package main
+
+import std::fmt;
+import "vector.rn"
+
+Widget :: trait {
+    paint :: fn(painter: Painter);
+    layout :: fn(width: i32, height: i32);
+}
+
+Clickable :: trait {
+    on_click :: fn(x: u16, y: u16);
+}
+
+Frame :: struct {
+    id: str;
+    x: u16, y: u16;
+    width, height: u16;
+    min_width, min_height: u16;
+    max_width, max_height: u16;
+    horizontal: bool;
+    background_color: Color;
+    children: Array<widget>;
+}
+
+impl Widget for Frame {
+    paint :: fn(painter: Painter) {
+        draw_block(self.x, self.x, self.width, self.height, self.background_color);
+    }
+    paint :: fn(width: i32, height: i32) {
+        self.children.layout(width, height);
+    }
+}
+
+Button :: struct {
+    id: str;
+    on_click: fn(ctx: Context)
+}
+
+main :: fn(a: i32, c: str) -> i32 {
+    let root = Frame {
+        id = "root",
+        width = 250,
+        height = 1000,
+        children: {
+            Button {
+                id: "help",
+                on_click: on_help,
+            },
+            Label {
+                id: "Info_label",
+                content: "More Info",
+            },
+        },
+    };
+    defer free(Frame);
+}
+
+Book :: struct {
+    isbn: u32;
+    title: str;
+}
+
+Book impl {
+    set_book_with_isbn :: fn(isbn: u32) {
+        let title = db.find_name_by_isbn(isbn);
+        self.isbn = isbn; 
+        self.title = title;
+    }
+}
+
+Book impl Printable {
+    fmt :: fn(self) -> str {
+        return f"Book with isbn ${self.isbn} is called ${self.title}";
+    }
+}
+
+make_point<T> :: fn(x: T = 0, y: T = 0) -> point_t 
+    where T: Cmp, Add, Sub, Mul, Div // Traits, die für T implementiert sein müssen
+{
+    let result = point_t {
+        x = x,
+        y = y,
+    };
+    result
+    //    ^^ Ausdruck hat kein Semikolon und ist das letzte in der Funktion, 
+    //    weshalb es als return-statement gewertet wird
+    // return result;
+    // ^^^^^^       ^ alternativ auch mit "return" und Semikolon
+}
