@@ -1,0 +1,1 @@
+"../out/main.exe" tests/literals.rn
