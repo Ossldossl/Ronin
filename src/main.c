@@ -8,13 +8,16 @@
 #include "include/console.h"
 #include "include/arena.h"
 #include "include/array.h"
-#include "include/error.h"
-
+#undef HAS_ORIGINAL_ERRORS_ARRAY
+#include "include/lexer.h"
 
 #define null NULL
 
 arena_t arena;
 array_t errors;
+
+#define HAS_ORIGINAL_ERRORS_ARRAY
+#include "include/misc.h"
 
 void print_usage(void)
 {
@@ -61,7 +64,7 @@ HANDLE get_file_handle(const char* file_name, bool write)
     return hFile;
 }
 
-int open_file(const char* file_name, char** file_content)
+size_t open_file(const char* file_name, char** file_content)
 {
     HANDLE hFile = get_file_handle(file_name, false);
     LARGE_INTEGER file_size_li;
@@ -69,7 +72,7 @@ int open_file(const char* file_name, char** file_content)
         log_fatal("Fehler beim Abfragen der Größe der Datei, %lu", GetLastError());
         exit(-2);
     }
-    int file_size = file_size_li.QuadPart;
+    size_t file_size = file_size_li.QuadPart;
 
     char* buf = arena_alloc(&arena, file_size+1);
     DWORD read = 0;
@@ -98,8 +101,12 @@ int main(int argc, char** argv)
     int file_size = open_file(file_name, &file_content);
 
     errors = array_init(sizeof(error_t));
-    arena_push_marker(&arena); // area for tokens
-    uint32_t tokens_count = lexer_tokenize(file_content, file_size);
-
-    printf("\x1B[0m");
+    token_t* start = arena.first->cur;
+    uint32_t token_count = lexer_tokenize(file_content, file_size);
+    lexer_debug(start);
+    // parse tokens
+    // type checking
+    // ir generation
+    // optimization
+    // register allocation && asm generation
 }

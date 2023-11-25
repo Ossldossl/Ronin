@@ -2,6 +2,18 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+struct arena_marker_t {
+    struct arena_marker_t* prev;
+};
+
+struct arena_block {
+    struct arena_block* next;
+    struct arena_marker_t* last_marker;
+    size_t capacity;
+    void* cur;
+    // data
+};
+
 typedef struct {
     struct arena_block* first;
     uint32_t page_size;

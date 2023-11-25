@@ -1,21 +1,11 @@
-#include "include/arena.h"
-#include <Windows.h>
 #include <stdio.h>
+#include <Windows.h>
 
-#define todo(thing) {printf("ERROR \"%s\" IS NOT IMPLEMENTED!", thing); exit(-2); }
+#include "include/arena.h"
+#include "include/console.h"
+
+#define todo(thing) {log_fatal("\"%s\" is not implemented yet", thing); exit(-4); }
 #define null NULL
-
-struct arena_marker_t {
-    struct arena_marker_t* prev;
-};
-
-struct arena_block {
-    struct arena_block* next;
-    struct arena_marker_t* last_marker;
-    size_t capacity;
-    void* cur;
-    // data
-};
 
 #define arena_start_of_data(block) ((char*)block + sizeof(struct arena_block))
 #define arena_data_size 2097152
@@ -23,11 +13,11 @@ struct arena_block {
 arena_t arena_init(void)
 {
     arena_t result;
-    // determine page size
+    // 2097152 ~= 2mb
     result.first = VirtualAlloc(null, 2097152, MEM_COMMIT | MEM_RESERVE , PAGE_READWRITE);
     if (result.first == null) {
-        printf("ERROR in VirtualAlloc! requested_size: %d; Error: %lu\n", arena_data_size, GetLastError());
-        exit(-1);
+        log_fatal("VirtualAlloc failed; requested_size: %d; Error: %lu\n", arena_data_size, GetLastError());
+        exit(-3);
     }
     struct arena_block* block = result.first;
            block->capacity    = arena_data_size;
@@ -42,6 +32,7 @@ void* arena_alloc(arena_t* arena, uint32_t size)
 {
     uint32_t used = (size_t)arena->first->cur - (size_t)arena->first;
     uint32_t left = arena->first->capacity - used;
+    log_debug("alloc with size %lu", size);
     if (left < size) {
         todo("alloc new page");
     }
