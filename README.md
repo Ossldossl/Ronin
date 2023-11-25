@@ -2,7 +2,7 @@
 ``` 
 CONST_VAL :: 123
 
-main :: fn(x: int, y: int) -> int {
+main :: fn(x: int, y: int) => int {
 	let var1: i32 = x * x;
 	let var2 = y * y;
 	let result = var1 * var2 + CONST_VAL;
@@ -28,7 +28,7 @@ test2 :: enum {		          // Aufzählungstyp
 TEST3 :: 123.45               // Konstante mit inferiertem Typ
 TEST4:int : 0xabc123         // Konstante mit Typ-Angabe
 
-foo :: fn(a: u16) -> str {...} // Funktions deklaration
+foo :: fn(a: u16) => str {...} // Funktions deklaration
 ```
 
 ### Arrays
@@ -52,7 +52,7 @@ array_slice entspricht hier [2, 3, 4, 5]
 ### Funktionen
 Funktionen in Ronin können mehrere Werte zurückgeben. Die Typen der Rückgabewerte werden in Klammern angegeben. 
 ```
-main :: fn(a: int, b: int) -> (int, bool) {...}
+main :: fn(a: int, b: int) => (int, bool) {...}
                                ^^^^^^^^^ Funktion gibt einen int und einen bool zurück
 ```
 Wenn die Funktion keinen Wert zurückgibt:
@@ -62,7 +62,7 @@ main :: fn(foo: int, bar: int) {...}
 ```
 Wenn es nur einen Rückgabewert gibt, dann dürfen die Klammern weggelassen werden.
 ```
-main :: fn(argv: [..]String) -> int {...}
+main :: fn(argv: [..]String) => int {...}
 							    ^^^ Funktion gibt einen int zurück
 ```
 Beim Aufruf von Funktionen kann der Parametername angegeben werden. 
@@ -71,9 +71,9 @@ Bsp:
 ```
 foo :: fn(a: int, b: int) {...}
 
-make_point :: fn(x: f32 = 0.f, y: f32 = 0.f) -> Point {...}
+make_point :: fn(x: f32 = 0.f, y: f32 = 0.f) => Point {...}
 
-main :: fn() -> () {
+main :: fn() => () {
 	foo(34, 35);
 	let point = make_point(x = 32); 
 	// 				            ^^ y kann weggelassen werden, da ein Defaultwert feststeht
@@ -100,7 +100,7 @@ Result :: struct {
 	},
 }
 
-main :: fn() -> () {
+main :: fn() => () {
 	res: Result
 	res.values.x = 34
 	    ^^^^^^ ------- Auf Werte innerhalb des Unions werden über den Union zugegriffen 
@@ -117,7 +117,7 @@ Result :: struct {
 	},
 }
 
-main :: fn() -> () {
+main :: fn() => () {
 	res: Result
 	res.x = 34
 	   ^^ ------ Werte innerhalb des Unions sind im Äußeren Scope
@@ -130,7 +130,7 @@ Vec2 :: struct {
 	y: int,
 }
 
-main :: fn() -> () {
+main :: fn() => () {
 	result: Vec2 = {x = 34, y = 35 }
 	                ^^^^^^--^^^^^^ ---- x und y werden Initialisiert
 }
@@ -166,13 +166,13 @@ Result :: struct {
 Trait definition:
 ```
 Add :: trait {
-	add :: fn(self, other: Self) -> Self;
+	add :: fn(self, other: Self) => Self;
 }
 ```
 Trait implementierung: 
 ```
 Vector impl Add<i32> {
-	add :: fn(self, other: T) -> T {
+	add :: fn(self, other: T) => T {
 		// ...
 	}
 }
@@ -180,7 +180,7 @@ Vector impl Add<i32> {
 #### Trait als Begrenzungen für generische Typen
 Bei Funktions-, Strukturen-, und Enumdefinitionen kann man Beschränkungen für generische Parameter angeben. (=> Typen müssen einen oder mehrere Traits implementieren)
 ```
-foo<T> :: fn(bar: []T) -> []T 
+foo<T> :: fn(bar: []T) => []T 
 	where T: Trait1 + Trait2;
 {
 	// ...
@@ -197,9 +197,9 @@ bar<U: Trait1 + Trait2, V: Trait3 = DefaultValue> :: struct
 ### Generische Typen
 Bei Funktionen:
 ```
-sum<T> :: fn(a: T, b: T) -> T {...}
+sum<T> :: fn(a: T, b: T) => T {...}
 
-main :: fn(args: []str) -> i32{
+main :: fn(args: []str) => i32{
 	sum<i32>(34, 35)
 	//  ^^^ kann inferiert werden
 }
@@ -221,17 +221,17 @@ main :: fn(..) {
 Bei Traits
 ```
 Add<Rhs = Self> :: trait {
-	add :: fn(self, other: Rhs) -> Self 
+	add :: fn(self, other: Rhs) => Self 
 }
 
 impl Add<Str> for Str {
-	add :: fn(self, other: Rhs) -> Self {
+	add :: fn(self, other: Rhs) => Self {
 
 	}
 }
 
 Str impl Add<Str> {
-	add :: fn(self, other: Rhs) -> Self {
+	add :: fn(self, other: Rhs) => Self {
 		// Füge beide strings zusammen
 	}
 }
