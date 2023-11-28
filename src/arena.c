@@ -32,13 +32,19 @@ void* arena_alloc(arena_t* arena, uint32_t size)
 {
     uint32_t used = (size_t)arena->first->cur - (size_t)arena->first;
     uint32_t left = arena->first->capacity - used;
-    log_debug("alloc with size %lu", size);
+    //log_debug("alloc with size %lu", size);
     if (left < size) {
         todo("alloc new page");
     }
     void* result = arena->first->cur;
     arena->first->cur = (char*)arena->first->cur + size;
+    arena->first->last_alloc_size = size;
     return result;
+}
+
+void arena_free_last(arena_t* arena)
+{
+    arena->first->cur -= arena->first->last_alloc_size;
 }
 
 void arena_push_marker(arena_t* arena) 

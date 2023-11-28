@@ -1,1 +1,1 @@
-"../out/main.exe" build "tests/str_literals.rn"
+"../out/main.exe" build "tests/keywords.rn"

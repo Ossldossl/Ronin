@@ -8,9 +8,9 @@ array_t array_init(uint16_t element_size)
 {
     array_t result;
     result.element_size = element_size;
-    result.capacity = ARRAY_START_SIZE * element_size;
+    result.capacity = ARRAY_START_SIZE;
     result.used = 0;
-    result.data = malloc(result.capacity);
+    result.data = malloc(result.capacity * result.element_size);
     return result;
 }
 
@@ -27,8 +27,7 @@ static void array_ensure_capacity(array_t* array, size_t capacity)
 
 void* array_append(array_t* array)
 {
-    size_t needed_cap = array->used * array->element_size;
-    array_ensure_capacity(array, needed_cap);
+    array_ensure_capacity(array, array->used+1);
     void* slot = (char*)array->data + array->used * array->element_size;
     array->used++;
     return slot;
@@ -38,6 +37,11 @@ void* array_get(array_t* array, size_t index)
 {
     void* slot = (char*)array->data + index * array->element_size;
     return slot;
+}
+
+uint32_t array_len(array_t* array) 
+{
+    return array->used;
 }
 
 void array_ensure_extra_capacity(array_t* array, uint32_t count)

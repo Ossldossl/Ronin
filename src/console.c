@@ -1,11 +1,15 @@
+#include <stdio.h>
+#include <stdint.h>
 #include <stdbool.h>
+#include <time.h>
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
-#include <stdio.h>
-#include <time.h>
+
 #include "include/console.h"
 
 #define null NULL
+
+extern array_t file_names;
 bool use_color = false;
 
 void init_console()
@@ -102,6 +106,26 @@ void _log_(char* file, int line, log_level_e level, char* fmt, ...)
     vprintf(fmt, args);
     va_end(args);
     
+    printf("\n");
+}
 
+void c_print_error(span_t loc, log_level_e level, char* fmt, ...)
+{
+    console_set_color(COLOR_GREY);
+    console_print_time();
+
+    console_set_color(level+1);
+    console_set_bold();
+    printf("%s", log_levels[level]);
+    console_reset_bold();
+
+    console_set_color(COLOR_GREY);
+    printf("%s:%d:%d", *(char**)array_get(&file_names, loc.file_id), loc.line, loc.col);
+    console_reset();
+
+    va_list args; va_start(args, fmt);
+    vprintf(fmt, args);
+    va_end(args);
+    
     printf("\n");
 }

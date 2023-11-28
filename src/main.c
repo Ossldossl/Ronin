@@ -15,6 +15,7 @@
 
 arena_t arena;
 array_t errors;
+array_t file_names;
 
 #define HAS_ORIGINAL_ERRORS_ARRAY
 #include "include/misc.h"
@@ -86,6 +87,64 @@ size_t open_file(const char* file_name, char** file_content)
     return file_size;
 }
 
+char* get_line(char* file_content, int line)
+{
+    int cur = 1;
+    int i = 0;
+    while (true) {
+        char c = file_content[i];
+        if (c == '\0') return null;
+        
+        if (cur == line) {
+            char* start = &file_content[i];
+            uint32_t len = 0;
+            while (true) {
+                c = file_content[i++];
+                if (c == '\r' || c == '\n') {
+                    break;
+                }
+                len++;
+            }
+            char* line = malloc(len+1);
+            memcpy_s(line, len+1, start, len);
+            line[len] = '\0';
+            return line;
+        }
+
+        if (c == '\r') { 
+            cur++; i++;
+        }
+        if (c == '\n') {
+            cur++;
+        }
+        i++;
+    }
+}
+
+[[no_return]] void print_errors_and_exit(char* file_content, int file_size)
+{
+    for_array(&errors, error_t) 
+        c_msg(e->error_loc, e->lvl, " %s", e->error);
+        printf("    "); 
+        char* error_line = get_line(file_content, e->error_loc.line);
+        if (error_line == null) {
+            log_error("Line is null!");
+            continue;
+        }
+        printf("%s", error_line);
+        printf("\n    "); 
+        printf("\x1b[%dC", e->error_loc.col);
+        console_set_bold(); console_set_color(COLOR_RED);
+        for (int i = 0; i < e->error_loc.len; i++) {
+            printf("^");
+        }
+        
+        printf("-- ");
+        printf("%s\n\n", e->error);
+        console_reset();
+    }
+}
+
 int main(int argc, char** argv)
 {
     init_console();
@@ -101,9 +160,18 @@ int main(int argc, char** argv)
     int file_size = open_file(file_name, &file_content);
 
     errors = array_init(sizeof(error_t));
+    file_names = array_init(sizeof(char*));
+    char** slot = array_append(&file_names);
+    *slot = file_name; 
+    
     token_t* start = arena.first->cur;
-    uint32_t token_count = lexer_tokenize(file_content, file_size);
-    lexer_debug(start);
+    uint32_t token_count = lexer_tokenize(file_content, file_size, 0); // 0 => file_id
+    lexer_debug(start, token_count);
+
+    if (array_len(&errors) > 0) {
+        print_errors_and_exit(file_content, file_size);
+
+    }
     // parse tokens
     // type checking
     // ir generation

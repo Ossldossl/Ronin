@@ -8,18 +8,23 @@ extern array_t errors;
 
 #define null NULL
 
+typedef enum {
+    LOG_DEBUG,
+    LOG_INFO,
+    LOG_WARN,
+    LOG_ERROR,
+    LOG_FATAL,
+} log_level_e;
+
 typedef struct span_t {
+    uint8_t file_id; // only 255 files for now
     uint32_t line;
     uint32_t col;
     uint32_t len;
 } span_t;
 
 typedef struct {
-    char* data;
-    uint16_t len;
-} str_slice_t;
-
-typedef struct {
+    log_level_e lvl;
     char* error;
     span_t error_loc;
     char* hint;
@@ -29,6 +34,7 @@ typedef struct {
 inline void make_error_h(char* error, span_t error_loc, char* hint, span_t hint_loc)
 {
     error_t* err = (error_t*)array_append(&errors);
+    err->lvl = LOG_ERROR;
     err->error = error;
     err->error_loc = error_loc;
     err->hint = hint;
@@ -38,6 +44,7 @@ inline void make_error_h(char* error, span_t error_loc, char* hint, span_t hint_
 inline void make_error(char* error, span_t error_loc)
 {
     error_t* err = (error_t*)array_append(&errors);
+    err->lvl = LOG_ERROR;
     err->error = error;
     err->error_loc = error_loc;
     err->hint = null;
