@@ -1,6 +1,18 @@
-while
-!123.f
-=
-as+break=153.econtinue< "this
-is  a test"
-0x"true
+package main
+import std::core::fmt
+
+main :: fn(a: i32) => i32 {
+    let a = 3;
+    fmt.println("hello, person number ${a}!");
+    let result = match a {
+        3 => true
+        4 => false
+        5 => {
+            if (34 + 35 == 69) {
+                true
+            }
+            false
+        }
+    }
+    return result
+}

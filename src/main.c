@@ -10,6 +10,7 @@
 #include "include/array.h"
 #undef HAS_ORIGINAL_ERRORS_ARRAY
 #include "include/lexer.h"
+#include "include/parser.h"
 
 #define null NULL
 
@@ -105,7 +106,7 @@ char* get_line(char* file_content, int line)
                 }
                 len++;
             }
-            char* line = malloc(len+1);
+            char* line = arena_alloc(&arena, len+1);
             memcpy_s(line, len+1, start, len);
             line[len] = '\0';
             return line;
@@ -121,28 +122,72 @@ char* get_line(char* file_content, int line)
     }
 }
 
+void print_code_line(char* file_content, uint32_t line_number)
+{
+    console_set_color(COLOR_GREY);
+    printf("%d  ", line_number); 
+    console_reset();
+    char* line = get_line(file_content, line_number);
+    if (line == null) {
+        log_error("Line is null!");
+        return;
+    }
+    printf("%s", line);
+    arena_free_last(&arena);
+}
+
+static int count_digits(uint32_t i)
+{
+    if (i == 0) return 1;
+    int digits = 0;
+    while (i != 0) {
+        i /= 10;
+        digits++;
+    }
+    return digits;
+}
+
+void print_err_msg(bool is_hint, span_t loc, char* msg)
+{
+    printf("\n  "); 
+
+    int digits_of_line_number = count_digits(loc.line);
+    for (int i = 0; i < loc.col-1 + digits_of_line_number; i++) {
+        printf(" ");
+    }
+
+    console_set_bold(); console_set_color(is_hint ? COLOR_CYAN : COLOR_RED);
+    for (int i = 0; i < loc.len; i++) {
+        printf("^");
+    }
+
+    printf(" -- %s", is_hint ? "Hint: " : "Error: ");
+    printf("%s", msg);
+    console_reset();
+}
+
 [[no_return]] void print_errors_and_exit(char* file_content, int file_size)
 {
     for_array(&errors, error_t) 
+        bool print_extra_hint_line = false;
         c_msg(e->error_loc, e->lvl, " %s", e->error);
-        printf("    "); 
-        char* error_line = get_line(file_content, e->error_loc.line);
-        if (error_line == null) {
-            log_error("Line is null!");
+
+        if (e->hint == null) {
+            print_code_line(file_content, e->error_loc.line);
+            print_err_msg(false, e->error_loc, e->error);
             continue;
+        } // else
+        if (e->hint_loc.line == e->error_loc.line) {
+            print_code_line(file_content, e->hint_loc.line);
+            bool hint_first = e->hint_loc.col > e->error_loc.col;
+            if (hint_first) { print_err_msg(true, e->hint_loc, e->hint); }
+            print_err_msg(false, e->error_loc, e->error);
+            if (!hint_first) {
+                print_err_msg(true, e->hint_loc, e->hint);
+            }
         }
-        printf("%s", error_line);
-        printf("\n    "); 
-        printf("\x1b[%dC", e->error_loc.col);
-        console_set_bold(); console_set_color(COLOR_RED);
-        for (int i = 0; i < e->error_loc.len; i++) {
-            printf("^");
-        }
-        
-        printf("-- ");
-        printf("%s\n\n", e->error);
-        console_reset();
     }
+    exit(-4);
 }
 
 int main(int argc, char** argv)
@@ -164,15 +209,18 @@ int main(int argc, char** argv)
     char** slot = array_append(&file_names);
     *slot = file_name; 
     
+    // generate tokens
     token_t* start = arena.first->cur;
     uint32_t token_count = lexer_tokenize(file_content, file_size, 0); // 0 => file_id
     lexer_debug(start, token_count);
 
+    parser_parse_tokens(start, token_count);
+
     if (array_len(&errors) > 0) {
         print_errors_and_exit(file_content, file_size);
-
     }
     // parse tokens
+    
     // type checking
     // ir generation
     // optimization

@@ -26,6 +26,7 @@ enum token_type_e {
     TOKEN_INT_LIT,
     TOKEN_FLOAT_LIT,
     TOKEN_STR_LIT,
+    TOKEN_IDENT,
 
     TOKEN_LPAREN,       // (
     TOKEN_RPAREN,       // )
@@ -91,6 +92,7 @@ enum token_type_e {
     TOKEN_IMPORT,
     TOKEN_LET,
     TOKEN_MATCH,
+    TOKEN_PACKAGE,
     TOKEN_RETURN,
     TOKEN_SELFVAL,      // self
     TOKEN_STRUCT,
@@ -109,6 +111,7 @@ const char* token_type_strings[] = {
     "TOKEN_INT_LIT",
     "TOKEN_FLOAT_LIT",
     "TOKEN_STR_LIT",
+    "TOKEN_IDENT",
 
     "TOKEN_LPAREN",       // (
     "TOKEN_RPAREN",       // )
@@ -173,6 +176,7 @@ const char* token_type_strings[] = {
     "TOKEN_IMPORT",
     "TOKEN_LET",
     "TOKEN_MATCH",
+    "TOKEN_PACKAGE",
     "TOKEN_RETURN",
     "TOKEN_SELFVAL",      // self
     "TOKEN_STRUCT",

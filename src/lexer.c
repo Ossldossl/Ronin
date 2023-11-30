@@ -34,12 +34,12 @@ void lexer_debug(token_t* start, uint32_t token_count)
             last_line = cur->span.line;
             printf("\n");
         }
-
         switch (cur->type) {
             case TOKEN_EOF: {
                 printf("EOF\n"); break;
             }
-            case TOKEN_STR_LIT: {
+            case TOKEN_STR_LIT:
+            case TOKEN_IDENT: {
                 printf("%s(\"%s\") ", token_type_strings[cur->type], str_to_cstr(cur->value.string_value));
                 arena_free_last(&arena); break;
             }
@@ -60,6 +60,7 @@ void lexer_debug(token_t* start, uint32_t token_count)
 // token that has no value associated with it
 void make_token_nv(token_type_e type, span_t loc)
 {
+    log_debug("added token %s", token_type_strings[type]);
     token_t* tok = arena_alloc(&arena, sizeof(token_t));
     tok->type = type;
     tok->span = loc;
@@ -101,11 +102,6 @@ static inline char peek(void) {
     return lexer.content[lexer.index+1];
 }
 
-char next_char() // does not skip whitespace
-{
-    return lexer.content[lexer.index++];
-}
-
 char next_char_sw() // skips whitespace
 {
     while (true) {
@@ -113,7 +109,6 @@ char next_char_sw() // skips whitespace
         if (c == '\x0D') { // carriage return
             lexer.index++; lexer.line++; lexer.col = 0;
         }
-        else if (c == '\0') { lexer.index--; return '\0'; } // so that we catch it in the main loop (EOF)
         else if (c == '\x0A') {
             lexer.line++; lexer.col = 0;
         }
@@ -209,7 +204,7 @@ void lexer_parse_exponent(double result_d, uint32_t start_col)
     char c = get_next();
     if (c == '-') {
         advance();
-        if (c == '\0') { return make_error("'e' in float literal has to be followed by an integer exponent!", LOC(lexer.line, start_col, lexer.col-start_col)); }
+        if (c == '\0') { return make_error("'e' in float literal has to be fo1llowed by an integer exponent!", LOC(lexer.line, start_col, lexer.col-start_col)); }
         int64_t exponent = lexer_parse_int();
         for (int i = 0; i < exponent; i++) {
             result_d /= 10.f;
@@ -294,7 +289,7 @@ void lexer_parse_number(void)
 void lexer_parse_string(void)
 {
     str_t result;
-    uint32_t start_col = lexer.col-1;
+    uint32_t start_col = lexer.col;
     advance(); // skip starting "
     result.len = 0; result.data = &lexer.content[lexer.index];
     while (true) {
@@ -333,16 +328,29 @@ end_parse_string:
     advance(); // skip closing quote
 }
 
-void parse_identifier(void)
-{
-
-}
-
 inline bool is_valid_ident_char(char c) {
     if (is_valid_int_digit(c)) return true;
     if (c >= 'a' && c <= 'z') return true;
     if (c >= 'A' && c <= 'Z') return true;
     return false;
+}
+
+void parse_identifier(void)
+{
+    uint32_t start_col = lexer.col;
+    char c = get_cur();
+    char* start = &lexer.content[lexer.index];
+    int len = 0;
+    while (true) {
+        if (!is_valid_ident_char(c)) {
+            break;
+        }
+        len++;
+        c = get_next();
+    }
+    if (len > 0) {
+        return make_token_v(TOKEN_IDENT, LOC(lexer.line, start_col, lexer.col - start_col), STRING_VALUE(make_str(start, len)));
+    }
 }
 
 inline bool is_valid_keyword_char(char c) {
@@ -363,7 +371,7 @@ bool keyword_eq(char* str, const char* keyword, uint32_t len)
     if (keyword_eq(&lexer.content[lexer.index], (str), (len))) {                                    \
         if (!is_valid_ident_char(lexer.content[lexer.index+(len)])) {                               \
             lexer.index+=(len); lexer.col+=(len);                                                   \
-            return make_token_nv((tok), LOC(lexer.line, start_col, lexer.col - start_col));         \
+            return make_token_nv((tok), LOC(lexer.line, start_col, len));         \
         }                                                                                           \
     }
 
@@ -406,6 +414,9 @@ void parse_identifier_or_keyword(void)
         }
         case 'm': {
             CHECK_AND_MAKE_TOKEN("match", 5, TOKEN_MATCH); break;
+        }
+        case 'p': {
+            CHECK_AND_MAKE_TOKEN("package", 7, TOKEN_PACKAGE); break;
         }
         case 'r': {
             CHECK_AND_MAKE_TOKEN("return", 6, TOKEN_RETURN); break;
