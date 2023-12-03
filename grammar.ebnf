@@ -10,9 +10,9 @@ impl ::= 'impl' (impl_body | (ident impl_body))
 impl_body ::= '{' function_decl* '}'
 
 const_var_decl ::= ident ('<'ident (','ident)*'>')? '::' (comptime_expr | ('struct' struct_decl_body) | ('enum' enum_decl_body) | ('trait' trait_decl_body) | 'foreign'? 'fn' function)
-struct_decl_body ::= '{' ident_type_pair (',' ident_type_pair)* ','? '}'
 enum_decl_body ::= '{' (ident ('('ident')')?) (',' ident ('('ident')')?)* ','? '}'
 trait_decl_body ::= '{' function_def* '}'
+struct_decl_body ::= '{' ident_type_pair (',' ident_type_pair)* ','? '}'
 
 function ::= '(' ident_type_pair* ')' ('->' ident)? (('where' where)? block)?
 function_def ::= '(' ident_type_pair* ')' ('->' ident)? ('where' where)? 
@@ -21,12 +21,12 @@ function_call ::= ident ('<'ident (','ident)* '>')? '(' (expr (','expr*))? ')' '
 
 ident_type_pair ::= (ident ':' ident) (',' ident ':' ident)*
 
-return ::= 'return' expr
-while_loop ::= 'while' simple_expr block
-for_loop ::= 'for' '('? (ident 'in' ident) | (ident '=' simple_expr ';' simple_expr ';' statement ';') ')'? block
 let ::= 'let' ident (':' ident) '=' expr
+yield ::= 'yield' expr
+return ::= 'return' expr
+for_loop ::= 'for' '('? (ident 'in' ident) | (ident '=' simple_expr ';' simple_expr ';' statement ';') ')'? block
+while_loop ::= 'while' simple_expr block
 statement ::= ('let' let) | ('for' for_loop) | ('while' while_loop) | 'return' return
 
 block ::= '{' (statement | expr_statement)* '}'
 expr_statement ::= ('{' block '}') | ('match' match) | ('if' if) | function_call
-/*                   ^^^^ -- return value */

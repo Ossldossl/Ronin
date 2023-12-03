@@ -130,6 +130,7 @@ void print_code_line(char* file_content, uint32_t line_number)
     char* line = get_line(file_content, line_number);
     if (line == null) {
         log_error("Line is null!");
+        exit(-4);
         return;
     }
     printf("%s", line);
@@ -175,6 +176,7 @@ void print_err_msg(bool is_hint, span_t loc, char* msg)
         if (e->hint == null) {
             print_code_line(file_content, e->error_loc.line);
             print_err_msg(false, e->error_loc, e->error);
+            printf("\n");
             continue;
         } // else
         if (e->hint_loc.line == e->error_loc.line) {
@@ -185,6 +187,7 @@ void print_err_msg(bool is_hint, span_t loc, char* msg)
             if (!hint_first) {
                 print_err_msg(true, e->hint_loc, e->hint);
             }
+            printf("\n");
         }
     }
     exit(-4);
@@ -214,15 +217,16 @@ int main(int argc, char** argv)
     uint32_t token_count = lexer_tokenize(file_content, file_size, 0); // 0 => file_id
     lexer_debug(start, token_count);
 
-    parser_parse_tokens(start, token_count);
-
+    // parse tokens
+    ast_t* ast = parser_parse_tokens(start, token_count);
+    parser_debug(ast);
     if (array_len(&errors) > 0) {
         print_errors_and_exit(file_content, file_size);
     }
-    // parse tokens
     
-    // type checking
-    // ir generation
-    // optimization
+    // resolve types and functions
+    // check types
+    // generate ir
+    // optimize
     // register allocation && asm generation
 }

@@ -7,7 +7,6 @@ typedef enum token_type_e token_type_e;
 
 typedef union {
     int64_t int_value;
-    uint64_t uint_value;
     double double_value;
     str_t string_value;
 } token_value_u;
@@ -36,8 +35,10 @@ enum token_type_e {
     TOKEN_RBRACE,       // }
 
     TOKEN_PLUS,         // +
+    TOKEN_INC,          // --
     TOKEN_PLUS_EQ,      // +=
     TOKEN_MINUS,        // -
+    TOKEN_DEC,          // --
     TOKEN_MINUS_EQ,     // -=
     TOKEN_ASTERISK,     // *
     TOKEN_ASTERISK_EQ,  // *=
@@ -50,7 +51,6 @@ enum token_type_e {
     TOKEN_BAND,         // &
     TOKEN_BAND_EQ,      // &=
     TOKEN_BNOT,         // ~
-    TOKEN_BNOT_EQ,      // ~=
     TOKEN_XOR,          // ^
     TOKEN_XOR_EQ,       // ^=
     TOKEN_LSHIFT,       // <<
@@ -59,10 +59,10 @@ enum token_type_e {
     TOKEN_ASSIGN,       // =
     TOKEN_EQ,           // ==
     TOKEN_NEQ,          // !=
-    TOKEN_GT,           // >
-    TOKEN_GEQ,          // >=
     TOKEN_LT,           // <
+    TOKEN_GT,           // >
     TOKEN_LEQ,          // <=
+    TOKEN_GEQ,          // >=
 
     TOKEN_NOT,          // !
     TOKEN_LOR,          // ||
@@ -101,6 +101,7 @@ enum token_type_e {
     TOKEN_TRUE,
     TOKEN_WHERE,
     TOKEN_WHILE,
+    TOKEN_YIELD,
 
     TOKEN_EOF,
 };
@@ -121,8 +122,10 @@ const char* token_type_strings[] = {
     "TOKEN_RBRACE",       // }
 
     "TOKEN_PLUS",         // +
+    "TOKEN_INC",          // --
     "TOKEN_PLUS_EQ",      // +=
     "TOKEN_MINUS",        // -
+    "TOKEN_DEC",          // --
     "TOKEN_MINUS_EQ",     // -=
     "TOKEN_ASTERISK",     // *
     "TOKEN_ASTERISK_EQ",  // *=
@@ -135,7 +138,6 @@ const char* token_type_strings[] = {
     "TOKEN_BAND",         // &
     "TOKEN_BAND_EQ",      // &=
     "TOKEN_BNOT",         // ~
-    "TOKEN_BNOT_EQ",      // ~=
     "TOKEN_XOR",          // ^
     "TOKEN_XOR_EQ",       // ^=
     "TOKEN_LSHIFT",       // <<
@@ -144,10 +146,10 @@ const char* token_type_strings[] = {
     "TOKEN_ASSIGN",       // =
     "TOKEN_EQ",           // ==
     "TOKEN_NEQ",          // !=
-    "TOKEN_GT",           // >
-    "TOKEN_GEQ",          // >=
     "TOKEN_LT",           // <
+    "TOKEN_GT",           // >
     "TOKEN_LEQ",          // <=
+    "TOKEN_GEQ",          // >=
 
     "TOKEN_NOT",          // !
     "TOKEN_LOR",          // ||
@@ -161,6 +163,7 @@ const char* token_type_strings[] = {
 
     "TOKEN_ARROW",        // =>
 
+    // keywords
     "TOKEN_AS",
     "TOKEN_BREAK",
     "TOKEN_CONTINUE",
@@ -185,6 +188,7 @@ const char* token_type_strings[] = {
     "TOKEN_TRUE",
     "TOKEN_WHERE",
     "TOKEN_WHILE",
+    "TOKEN_YIELD",
 
     "TOKEN_EOF",
 };

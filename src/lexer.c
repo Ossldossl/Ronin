@@ -60,7 +60,7 @@ void lexer_debug(token_t* start, uint32_t token_count)
 // token that has no value associated with it
 void make_token_nv(token_type_e type, span_t loc)
 {
-    log_debug("added token %s", token_type_strings[type]);
+    //log_debug("added token %s", token_type_strings[type]);
     token_t* tok = arena_alloc(&arena, sizeof(token_t));
     tok->type = type;
     tok->span = loc;
@@ -437,6 +437,9 @@ void parse_identifier_or_keyword(void)
             CHECK_AND_MAKE_TOKEN("where", 5, TOKEN_WHERE)
             else CHECK_AND_MAKE_TOKEN("while", 5, TOKEN_WHILE);
             break;
+        } 
+        case 'y': {
+            CHECK_AND_MAKE_TOKEN("yield", 5, TOKEN_YIELD); break;
         }
     }
     return parse_identifier();
@@ -477,14 +480,20 @@ uint32_t lexer_tokenize(char* file_content, size_t file_size, uint8_t file_id)
                 if (peek() == '=') {
                     advance();
                     make_token_nv(TOKEN_PLUS_EQ, LOC(lexer.line, lexer.col, 2)); break;
-                }
+                } else if (peek() == '+') {
+                    advance();
+                    make_token_nv(TOKEN_INC, LOC(lexer.line, lexer.col, 2)); break;
+                } 
                 make_token_nv(TOKEN_PLUS, LOC(lexer.line, lexer.col, 1)); break;
             }
             case '-': {
                 if (peek() == '=') {
                     advance();
                     make_token_nv(TOKEN_MINUS_EQ, LOC(lexer.line, lexer.col, 2)); break;
-                } 
+                } else if (peek() == '-') {
+                    advance();
+                    make_token_nv(TOKEN_DEC, LOC(lexer.line, lexer.col, 2)); break;
+                }
                 make_token_nv(TOKEN_MINUS, LOC(lexer.line, lexer.col, 1)); break;
             }
             case '*': {
@@ -544,10 +553,6 @@ uint32_t lexer_tokenize(char* file_content, size_t file_size, uint8_t file_id)
                 make_token_nv(TOKEN_BAND, LOC(lexer.line, lexer.col, 1)); break;
             }
             case '~': {
-                if (peek() == '=') {
-                    advance();
-                    make_token_nv(TOKEN_BNOT_EQ, LOC(lexer.line, lexer.col, 2)); break;
-                } 
                 make_token_nv(TOKEN_BNOT, LOC(lexer.line, lexer.col, 1)); break;
             }
             case '^': {
