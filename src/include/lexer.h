@@ -35,7 +35,7 @@ enum token_type_e {
     TOKEN_RBRACE,       // }
 
     TOKEN_PLUS,         // +
-    TOKEN_INC,          // --
+    TOKEN_INC,          // ++
     TOKEN_PLUS_EQ,      // +=
     TOKEN_MINUS,        // -
     TOKEN_DEC,          // --

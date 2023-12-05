@@ -1,3 +1,4 @@
 package main
 
-test :: 2 * ( 3 + (!4));
+test :: ("a"*3) + -(((b))) * (!b);
+

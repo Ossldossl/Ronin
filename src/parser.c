@@ -32,6 +32,7 @@ static void print_indent(int indent)
 
 static void parser_print_expr(int indent, expr_t* expr)
 {
+    if (expr == null) return;
     print_indent(indent);
     if (expr->kind == EXPR_BINARY) {
         printf("- Binary Expression:\n");
@@ -40,16 +41,20 @@ static void parser_print_expr(int indent, expr_t* expr)
         parser_print_expr(indent+1, expr->bin.lhs);
         parser_print_expr(indent+1, expr->bin.rhs);
     } else if (expr->kind == EXPR_POST) {
-        printf("- Postfix expression:\n");
+        printf("- %s:\n", expr->post.op_kind == POST_NONE ? "Literal" : "Postfix expr");
         print_indent(indent+1);
-        printf("- type: %s\n", post_op_kind_strings[expr->post.op_kind]);
+        if (expr->post.op_kind != POST_NONE) printf("- op_type: %s\n", post_op_kind_strings[expr->post.op_kind]);
+        printf("- val_type: %s\n", post_val_kind_strings[expr->post.val_kind]);
         print_indent(indent+1);
         if (expr->post.val_kind == POST_INT) {
             printf("- value: %lld\n", expr->post.value.int_value);
         } else if (expr->post.val_kind == POST_FLOAT) {
             printf("- value: %lf\n", expr->post.value.double_value);
         } else if (expr->post.val_kind == POST_STR) {
-            printf("- value: %s\n", str_to_cstr(expr->post.value.string_value));
+            printf("- value: \"%s\"\n", str_to_cstr(expr->post.value.string_value));
+            arena_free_last(&arena);
+        } else if (expr->post.val_kind == POST_IDENT) {
+            printf("- ident: %s\n", str_to_cstr(expr->post.value.string_value));
             arena_free_last(&arena);
         }
     } else if (expr->kind == EXPR_UNARY) {
@@ -226,6 +231,7 @@ expr_t* parse_post(void)
             }
             return make_post_expr(&val->value, POST_STR, POST_ARRAY_ACCESS, LOC(val->span.line, val->span.col, closing_bracket->span.col - val->span.col));
         }
+        else return make_post_expr(&val->value, POST_STR, POST_NONE, val->span);
     } 
     else if (val->type == TOKEN_IDENT) {
         if (op->type == TOKEN_LBRACKET) {
@@ -272,6 +278,15 @@ expr_t* parse_post(void)
             advance();
             return res;
         }
+        else return make_post_expr(&val->value, POST_IDENT, POST_NONE, val->span);
+    } else if (val->type == TOKEN_LPAREN) {
+        expr_t* body = parse_expr();
+        token_t* closing = get_cur();
+        if (closing->type != TOKEN_RPAREN) {
+            make_error_h("No matching closing parenthesis", val->span, "Insert ')' here", closing->span);
+            recover_until_next_semicolon(); return null;
+        }
+        advance(); return body;
     }
 
     make_error("Unexpected token in expr", val->span);
@@ -279,36 +294,30 @@ expr_t* parse_post(void)
     return null;
 }
 
+static un_expr_e parse_unary_token(token_type_e kind)
+{
+    un_expr_e result = UNARY_NONE;
+    switch (kind) {
+        case TOKEN_INC:      { result = UNARY_INC;        break; }
+        case TOKEN_DEC:      { result = UNARY_DEC;        break; }
+        case TOKEN_NOT:      { result = UNARY_LNOT;       break; }
+        case TOKEN_BAND:     { result = UNARY_ADDRESS_OF; break; }
+        case TOKEN_BNOT:     { result = UNARY_BNOT;       break; }
+        case TOKEN_MINUS:    { result = UNARY_NEGATE;     break; }
+        case TOKEN_ASTERISK: { result = UNARY_DEREF;      break; }
+        default: break;
+    }
+    return result;
+}
+
 expr_t* parse_unary(void)
 {
-    expr_t* rhs;
-    while (true) {
-        token_t* op = get_cur();
-        un_expr_e kind = 0;
-        if (op->type == TOKEN_LPAREN) {
-            advance();
-            expr_t* content = parse_expr();
-            token_t* closing = get_cur();
-            if (closing->type != TOKEN_RPAREN) {
-                make_error_h("No matching closing parenthesis", op->span, "Insert ')' here", closing->span);
-                recover_until_next_semicolon(); return null;
-            }
-            advance();
-            return content;
-        }
-        if      (op->type == TOKEN_INC) kind = UNARY_INC;
-        else if (op->type == TOKEN_DEC) kind = UNARY_DEC;
-        else if (op->type == TOKEN_NOT) kind = UNARY_LNOT;
-        else if (op->type == TOKEN_BNOT) kind = UNARY_BNOT;
-        else if (op->type == TOKEN_ASTERISK) kind = UNARY_DEREF;
-        else if (op->type == TOKEN_MINUS) kind = UNARY_NEGATE;
-        else if (op->type == TOKEN_BAND) kind = UNARY_ADDRESS_OF;
-        else return parse_post();
-        advance();
-        rhs = parse_post();
-        rhs = make_un_expr(rhs, kind, LOC(op->span.line, op->span.col, get_cur()->span.col - op->span.col));
-    }   
-    return rhs;
+    token_t* op_tok = get_cur();
+    un_expr_e kind = parse_unary_token(op_tok->type);
+    if (kind == UNARY_NONE) return parse_post();
+    advance();
+    expr_t* rhs = parse_unary(); 
+    return make_un_expr(rhs, kind, op_tok->span);;
 }
 
 expr_t* parse_as(void)
@@ -322,25 +331,9 @@ expr_t* parse_as(void)
     return lhs;
 }
 
-expr_t* parse_add(void)
-{
-    expr_t* lhs = parse_as();
-    while (true) {
-        token_t* op = get_cur();
-        bin_expr_e kind = 0;
-        if (op->type == TOKEN_PLUS) kind = BINARY_ADD;
-        else if (op->type == TOKEN_MINUS) kind = BINARY_SUB;
-        else break;
-        advance();
-        expr_t* rhs = parse_as();
-        lhs = make_bin_expr(lhs, rhs, kind, op->span);
-    }
-    return lhs;
-}
-
 expr_t* parse_mul(void)
 {
-    expr_t* lhs = parse_add();
+    expr_t* lhs = parse_as();
     while (true) {
         token_t* op = get_cur();
         bin_expr_e kind = 0;
@@ -349,7 +342,23 @@ expr_t* parse_mul(void)
         else if (op->type == TOKEN_MODULO) kind = BINARY_MOD;
         else break;
         advance();
-        expr_t* rhs = parse_add();
+        expr_t* rhs = parse_as();
+        lhs = make_bin_expr(lhs, rhs, kind, op->span);
+    }
+    return lhs;
+}
+
+expr_t* parse_add(void)
+{
+    expr_t* lhs = parse_mul();
+    while (true) {
+        token_t* op = get_cur();
+        bin_expr_e kind = 0;
+        if (op->type == TOKEN_PLUS) kind = BINARY_ADD;
+        else if (op->type == TOKEN_MINUS) kind = BINARY_SUB;
+        else break;
+        advance();
+        expr_t* rhs = parse_mul();
         lhs = make_bin_expr(lhs, rhs, kind, op->span);
     }
     return lhs;
@@ -357,7 +366,7 @@ expr_t* parse_mul(void)
 
 expr_t* parse_shift(void)
 {
-    expr_t* lhs = parse_mul();
+    expr_t* lhs = parse_add();
     while (true) {
         token_t* op = get_cur();
         bin_expr_e kind = 0;
@@ -365,7 +374,7 @@ expr_t* parse_shift(void)
         else if (op->type == TOKEN_RSHIFT) kind = BINARY_RSHIFT;
         else break;
         advance();
-        expr_t* rhs = parse_mul();
+        expr_t* rhs = parse_add();
         lhs = make_bin_expr(lhs, rhs, kind, op->span);
     }
     return lhs;

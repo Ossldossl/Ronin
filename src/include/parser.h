@@ -65,6 +65,15 @@ const char* post_op_kind_strings[] = {
 };
 #endif
 
+#ifdef STRINGS_IMPLEMENTATION
+const char* post_val_kind_strings[] = {
+    "POST_INT",
+    "POST_FLOAT",
+    "POST_STR",
+    "POST_IDENT",
+};
+#endif
+
 typedef struct {
     post_val_kind_e val_kind;
     post_op_kind_e op_kind;
@@ -77,17 +86,19 @@ typedef struct {
 } post_expr_t;
 
 typedef enum {
-    UNARY_INC,
-    UNARY_DEC,
-    UNARY_LNOT, // logial not
-    UNARY_BNOT, // binary not
-    UNARY_DEREF,
-    UNARY_NEGATE, 
-    UNARY_ADDRESS_OF,
+    UNARY_NONE,
+    UNARY_INC,        // ++a
+    UNARY_DEC,        // --a
+    UNARY_LNOT,       // !a
+    UNARY_BNOT,       // ~a
+    UNARY_DEREF,      // *a
+    UNARY_NEGATE,     // -a
+    UNARY_ADDRESS_OF, // &a
 } un_expr_e;
 
 #ifdef STRINGS_IMPLEMENTATION
 const char* unary_kind_strings[] = {
+    "UNARY_NONE",
     "UNARY_INC",
     "UNARY_DEC",
     "UNARY_LNOT", // logial not
