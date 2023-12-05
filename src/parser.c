@@ -30,6 +30,23 @@ static void print_indent(int indent)
     }
 }
 
+static void print_post_value(int indent, post_expr_t* post)
+{
+    printf("- val_type: %s\n", post_val_kind_strings[post->val_kind]);
+    print_indent(indent+1);
+    if (post->val_kind == POST_INT) {
+        printf("- value: %lld\n", post->value.int_value);
+    } else if (post->val_kind == POST_FLOAT) {
+        printf("- value: %lf\n", post->value.double_value);
+    } else if (post->val_kind == POST_STR) {
+        printf("- value: \"%s\"\n", str_to_cstr(post->value.string_value));
+        arena_free_last(&arena);
+    } else if (post->val_kind == POST_IDENT) {
+        printf("- ident: %s\n", str_to_cstr(post->value.string_value));
+        arena_free_last(&arena);
+    }
+}
+
 static void parser_print_expr(int indent, expr_t* expr)
 {
     if (expr == null) return;
@@ -43,19 +60,30 @@ static void parser_print_expr(int indent, expr_t* expr)
     } else if (expr->kind == EXPR_POST) {
         printf("- %s:\n", expr->post.op_kind == POST_NONE ? "Literal" : "Postfix expr");
         print_indent(indent+1);
-        if (expr->post.op_kind != POST_NONE) printf("- op_type: %s\n", post_op_kind_strings[expr->post.op_kind]);
-        printf("- val_type: %s\n", post_val_kind_strings[expr->post.val_kind]);
+        printf("- op_type: %s\n", post_op_kind_strings[expr->post.op_kind]);
         print_indent(indent+1);
-        if (expr->post.val_kind == POST_INT) {
-            printf("- value: %lld\n", expr->post.value.int_value);
-        } else if (expr->post.val_kind == POST_FLOAT) {
-            printf("- value: %lf\n", expr->post.value.double_value);
-        } else if (expr->post.val_kind == POST_STR) {
-            printf("- value: \"%s\"\n", str_to_cstr(expr->post.value.string_value));
-            arena_free_last(&arena);
-        } else if (expr->post.val_kind == POST_IDENT) {
-            printf("- ident: %s\n", str_to_cstr(expr->post.value.string_value));
-            arena_free_last(&arena);
+        if (expr->post.op_kind == POST_NONE || expr->post.op_kind == POST_INC || expr->post.op_kind == POST_DEC) {
+            print_post_value(indent, &expr->post); return;
+        } else if (expr->post.op_kind == POST_MEMBER_ACCESS) {
+            print_post_value(indent, &expr->post);
+            print_indent(indent+1);
+            printf("- lhs: \n"); parser_print_expr(indent+2, expr->post.lhs);
+        } else if (expr->post.op_kind == POST_ARRAY_ACCESS) {
+            printf("- array_index:\n"); print_indent(indent+2); print_post_value(indent+1, &expr->post.array_index->post);
+            print_indent(indent+1);
+            printf("- lhs:\n"); 
+            parser_print_expr(indent+2, expr->post.lhs);
+        } else if (expr->post.op_kind == POST_FN_CALL) {
+            printf("- args: \n"); 
+            indent++;
+            for_array(&expr->post.args, expr_t*) 
+                parser_print_expr(indent+1, *e);
+            }
+            if (expr->post.args.used == 0) {print_indent(indent+2); printf("null\n");}
+            indent--;
+            print_indent(indent+1);
+            printf("- lhs:\n");
+            parser_print_expr(indent+2, expr->post.lhs);
         }
     } else if (expr->kind == EXPR_UNARY) {
         printf("- Unary Expression:\n");
@@ -73,7 +101,9 @@ void parser_debug(ast_t* ast)
 
 inline static token_t* get_next(void) 
 {
-    if (++parser.index >= parser.token_count) return &parser.tokens[parser.token_count-1];
+    if (++parser.index >= parser.token_count) {
+        return &parser.tokens[parser.token_count-1];
+    }
     return &parser.tokens[parser.index];
 }
 
@@ -116,6 +146,16 @@ bool expect(token_type_e expected_type, char* error_msg)
     token_t* tok = get_cur();
     if (tok->type != expected_type) {
         make_error(error_msg, tok->span);
+        return false;
+    }
+    advance(); return true;
+}
+
+bool expect_semicolon(void)
+{
+    token_t* tok = get_cur();
+    if (tok->type != TOKEN_SEMICOLON) {
+        make_error("Missing semicolon", tok->span);
         return false;
     }
     advance(); return true;
@@ -177,6 +217,18 @@ expr_t* make_post_expr(token_value_u* val, post_val_kind_e val_kind, post_op_kin
     return result;
 }
 
+expr_t* make_post_lhs(post_op_kind_e op_kind, expr_t* lhs, span_t loc)
+{
+    expr_t* result = arena_alloc(&arena, sizeof(expr_t));
+    result->kind             = EXPR_POST;
+    result->loc              = loc;
+    result->post.lhs         = lhs;
+    result->post.op_kind     = op_kind;
+    result->post.val_kind    = POST_LHS;
+    result->post.array_index = 0;
+    return result;
+}
+
 void parse_import(void)
 {
     token_t* import = get_cur();
@@ -203,11 +255,73 @@ void parse_import(void)
     }
     str_t path = make_str(ident->value.string_value.data, len);
     str_t result = str_replace2_1(path, "::", '/');
-    log_debug("%s => %s", str_to_cstr(path), result.data);
-    // TODO: Do something with the import
+    str_t* new_path = array_append(&parser.ast->import_paths);
+    *new_path = result;
 } 
 
 expr_t* parse_expr(void);
+
+expr_t* parse_post_ident(expr_t* lhs)
+{
+    if (lhs == null) return lhs;
+    token_t* op = get_cur();
+    switch (op->type) {
+        case TOKEN_INC: { 
+            return make_post_lhs(POST_INC, lhs, op->span);
+        }
+        case TOKEN_DEC: { 
+            return make_post_lhs(POST_DEC, lhs, op->span);   
+        }
+        case TOKEN_LPAREN: { 
+            lhs = make_post_lhs(POST_FN_CALL, lhs, lhs->loc);
+            lhs->post.args = array_init(sizeof(expr_t*));
+            if (get_next()->type == TOKEN_RPAREN) {
+                advance();
+                return parse_post_ident(lhs);
+            }
+            do {
+                expr_t** arg = array_append(&lhs->post.args);
+                *arg = parse_expr();
+            } while (match(TOKEN_COMMA));
+            token_t* closing = get_cur();
+            if (closing->type != TOKEN_RPAREN) {
+                make_error_h("No matching closing parenthesis", op->span, "Insert ')' here", closing->span);
+                recover_until_next_semicolon(); return null;
+            }
+            advance();
+            return parse_post_ident(lhs);
+            break;
+        }
+        case TOKEN_LBRACKET: { 
+            advance();
+            expr_t* array_index = parse_expr();
+            token_t* closing = get_cur();
+            if (closing->type != TOKEN_RBRACKET) {
+                make_error_h("No matching closing bracket", op->span, "Put a ']' here", closing->span);
+                recover_until_next_semicolon(); return null;
+            }
+            advance();
+            lhs = make_post_lhs(POST_ARRAY_ACCESS, lhs, LOC(op->span.line, op->span.col, closing->span.col - op->span.col));
+            lhs->post.array_index = array_index;
+            return parse_post_ident(lhs);
+            break;
+        }  
+        case TOKEN_PERIOD: { 
+            token_t* member = get_next();
+            if (member->type != TOKEN_IDENT) {
+                make_error("Expected identifier in member access!", member->span);
+                recover_until_next_semicolon(); return null;
+            }
+            advance();
+            expr_t* new_lhs = make_post_expr(&member->value, POST_IDENT, POST_MEMBER_ACCESS, member->span);
+            new_lhs->post.lhs = lhs;
+            return parse_post_ident(new_lhs);
+            break;
+        } 
+        default: break;
+    }
+    return lhs;
+}
 
 expr_t* parse_post(void)
 {
@@ -234,51 +348,8 @@ expr_t* parse_post(void)
         else return make_post_expr(&val->value, POST_STR, POST_NONE, val->span);
     } 
     else if (val->type == TOKEN_IDENT) {
-        if (op->type == TOKEN_LBRACKET) {
-            advance();
-            expr_t* idx = parse_expr();
-            token_t* closing_bracket = get_cur();
-            if (closing_bracket->type != TOKEN_RBRACKET) {
-                make_error_h("No matching closing bracket!", op->span, "Put a ']' here", LOC(closing_bracket->span.line, closing_bracket->span.col, 1));
-                recover_until_next_semicolon();
-                return null;
-            }
-            expr_t* res =  make_post_expr(&val->value, POST_IDENT, POST_ARRAY_ACCESS, LOC(val->span.line, val->span.col, closing_bracket->span.col - val->span.col));
-            res->post.array_index = idx;
-            return res;
-        } else if (op->type == TOKEN_INC) {
-            return make_post_expr(&val->value, POST_IDENT, POST_INC, LOC(val->span.line, val->span.col, val->span.len + 2));
-        } else if (op->type == TOKEN_DEC) {
-            return make_post_expr(&val->value, POST_IDENT, POST_DEC, LOC(val->span.line, val->span.col, val->span.len + 2));
-        } else if (op->type == TOKEN_PERIOD) {
-            // TODO: multiple member and array accesses, e.g. test[1][2] or foo.bar.baz
-            token_t* member = get_next();
-            if (member->type != TOKEN_IDENT) {
-                make_error("Expected identifier in member access", member->span);
-                recover_until_next_semicolon();
-                return null;
-            }
-            expr_t* res = make_post_expr(&val->value, POST_IDENT, POST_MEMBER_ACCESS, LOC(val->span.line, val->span.col, (val->span.len + member->span.len) + 1));
-            res->post.member_ident = member->value.string_value;
-            return res;
-        } else if (op->type == TOKEN_LPAREN) {
-            token_t* cur = get_cur();
-            expr_t* res = make_post_expr(&val->value, POST_IDENT, POST_FN_CALL, val->span);
-            res->post.args = array_init(sizeof(expr_t*));
-            do {
-                expr_t** arg = array_append(&res->post.args);
-                *arg = parse_expr();
-                cur = get_cur();
-            } while (cur->type == TOKEN_COMMA);
-
-            if (cur->type != TOKEN_RPAREN) {
-                make_error_h("No matching closing parenthesis", op->span, "Insert ')' here", cur->span);
-                recover_until_next_semicolon(); return null;
-            }
-            advance();
-            return res;
-        }
-        else return make_post_expr(&val->value, POST_IDENT, POST_NONE, val->span);
+        expr_t* lhs = make_post_expr(&val->value, POST_IDENT, POST_NONE, val->span);
+        return parse_post_ident(lhs);
     } else if (val->type == TOKEN_LPAREN) {
         expr_t* body = parse_expr();
         token_t* closing = get_cur();
@@ -294,7 +365,7 @@ expr_t* parse_post(void)
     return null;
 }
 
-static un_expr_e parse_unary_token(token_type_e kind)
+static un_expr_e parse_unary_op(token_type_e kind)
 {
     un_expr_e result = UNARY_NONE;
     switch (kind) {
@@ -313,7 +384,7 @@ static un_expr_e parse_unary_token(token_type_e kind)
 expr_t* parse_unary(void)
 {
     token_t* op_tok = get_cur();
-    un_expr_e kind = parse_unary_token(op_tok->type);
+    un_expr_e kind = parse_unary_op(op_tok->type);
     if (kind == UNARY_NONE) return parse_post();
     advance();
     expr_t* rhs = parse_unary(); 
@@ -480,6 +551,7 @@ void parse_const_var_decl(token_t* ident)
         // identifier is a constant variable
         expr_t* expr = parse_expr();
         parser.ast->test = expr;
+        expect_semicolon();
     }
 }
 
@@ -488,7 +560,7 @@ void parse_impl(token_t* ident)
     return;
 }
 
-void parse_external_statement(void) 
+void parse_toplevel_statement(void) 
 {
     token_t* ident = get_cur();
     token_t* next = get_next();
@@ -518,20 +590,19 @@ ast_t* parser_parse_tokens(token_t* tokens, uint32_t token_count)
     ok = expect(TOKEN_IDENT, "Expected identifier after package definition");
     if (!ok) return parser.ast;
 
-    token_t* tok = get_cur();
     while (true) {
+        token_t* tok = get_cur();
         if (tok->type == TOKEN_EOF || parser.index >= parser.token_count) break;
         else if (tok->type == TOKEN_IMPORT) {
-            parse_import(); break;
+            parse_import();
         }
         else if (tok->type == TOKEN_IDENT) {
-            parse_external_statement(); break;
+            parse_toplevel_statement(); 
         }
         else {
             make_error("unexpected token", tok->span);
             break;
         }
-        token_t* tok = get_next();
     }
     return parser.ast;
 }

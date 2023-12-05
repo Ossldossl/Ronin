@@ -1,7 +1,8 @@
 package main
 
-import std::fmt;
-import "vector.rn"
+import std::fmt
+
+paint :: fn(painter: Painter) -> i32;
 
 Widget :: trait {
     paint :: fn(painter: Painter);
@@ -20,7 +21,7 @@ Frame :: struct {
     max_width, max_height: u16;
     horizontal: bool;
     background_color: Color;
-    children: Array<widget>;
+    children: Array;
 }
 
 impl Widget for Frame {
@@ -75,7 +76,7 @@ Book impl Printable {
     }
 }
 
-make_point<T> :: fn(x: T = 0, y: T = 0) => point_t 
+make_point :: fn(x: T = 0, y: T = 0) => point_t 
     where T: Cmp, Add, Sub, Mul, Div // Traits, die für T implementiert sein müssen
 {
     let result = point_t {

@@ -43,6 +43,7 @@ typedef enum {
     POST_FLOAT,
     POST_STR,
     POST_IDENT,
+    POST_LHS,
 } post_val_kind_e;
 
 typedef enum {
@@ -71,6 +72,7 @@ const char* post_val_kind_strings[] = {
     "POST_FLOAT",
     "POST_STR",
     "POST_IDENT",
+    "POST_LHS",
 };
 #endif
 
@@ -79,9 +81,9 @@ typedef struct {
     post_op_kind_e op_kind;
     union {
         expr_t* array_index;
-        str_t member_ident;
         array_t args;
     };
+    expr_t* lhs;
     token_value_u value;
 } post_expr_t;
 
