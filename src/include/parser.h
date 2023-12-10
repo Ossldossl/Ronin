@@ -1,9 +1,5 @@
 #pragma once
 #include "lexer.h"
-#include "stb_ds.h"
-
-// TODO: PARSER
-
 
 // types: globale hashmap für types
 //        alle referenzen (wie return values) sind pointer zu den jeweiligen typen  

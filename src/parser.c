@@ -1,12 +1,11 @@
 #include <stdio.h>
+#include <stdlib.h>
 #define STRINGS_IMPLEMENTATION
 #include "include/parser.h"
 #include "include/arena.h"
 #include "include/array.h"
 #include "include/misc.h"
 #include "include/console.h"
-#define STB_DS_IMPLEMENTATION
-#include "include/stb_ds.h"
 
 #define LOC(l, c, le) (span_t) {.line = (l), .col = (c), .len = (le), .file_id=(parser.cur_file_id)}
 
@@ -527,14 +526,42 @@ expr_t* parse_expr(void)
     return result;
 }
 
+fn_t* parse_fn(token_t* ident)
+{
+    token_t* lparen = get_next();
+    if (lparen->type != TOKEN_LPAREN) {
+        make_error("Expected argument list after function keyword", get_previous()->span);
+        recover_until_next_semicolon(); return null;
+    }
+    token_t* next = null;
+    fn_t* fn; fn->args_count = 0;
+    fn->args = arena.first->cur;
+    do {
+        token_t* ident = get_next();
+        if (ident->type != TOKEN_IDENT) {
+            make_error("Expected identifier", ident->span); recover_until_next_semicolon(); return null;
+        }
+        token_t* colon = get_next();
+        if (colon->type != TOKEN_COLON) {
+            make_error("Expected ':' after argument identifier", colon->span); recover_until_next_semicolon(); return null;
+        }
+        token_t* type = get_next();
+        if (type->type != TOKEN_IDENT) {
+            make_error("Expected a type for the argument", type->span); recover_until_next_semicolon(); return null;
+        }
+        fn->args_count++; 
+        field_t* arg = arena_alloc(&arena, sizeof(field_t));
+        // TODO: types
+        token_t* next = get_next();
+    } while (next->type == TOKEN_COMMA);
+}
+
 void parse_const_var_decl(token_t* ident)
 {
     // TODO: Generics
     token_t* next = get_next();
     if (next->type == TOKEN_FN) {
-        //return parse_fn(ident);
-        log_fatal("parsing FN is not implemented yet");
-        exit(-4);
+        fn_t* fn = parse_fn(ident);
     } else if (next->type == TOKEN_STRUCT) {
         //return parse_struct(ident);
         log_fatal("parsing STRUCT is not implemented yet");
