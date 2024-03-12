@@ -143,7 +143,7 @@ static void print_expr(int indent, expr_t* expr)
             indent++;
             for_to(i, expr->block.stmts.used) {
                 stmt_t** stmt = array_get(&expr->block.stmts, i);
-                print_statement(indent+1, *stmt);
+                print_statement(indent, *stmt);
             } 
         } break;
         case (EXPR_MATCH): {
@@ -202,30 +202,44 @@ static void print_statement(u32 indent, stmt_t* stmt)
         case STMT_ASSIGN: {
             printf("- Assign Statement:\n");
             print_indent(++indent);
-                char* ident = str_to_cstr(&stmt->assign_stmt.ident);
-                printf("- ident: %s\n", ident);
-                arena_free_last(&arena); 
-                printf("- value:\n");
-                print_indent(++indent);
-                    print_expr(indent, stmt->assign_stmt.value);
+                printf("- lhs: \n");
+                indent++;
+                    print_expr(indent, stmt->assign_stmt.lhs);
+                indent--;
+                print_indent(indent);
+                printf("- rhs:\n");
+                ++indent;
+                    print_expr(indent, stmt->assign_stmt.rhs);
     	        --indent;
             --indent;
         } break;
         case STMT_FOR_LOOP: {
-            printf("- For Loop:\n");
-            print_indent(++indent);
-                printf("- Initializer:\n");
-                indent++;
-                    print_statement(indent, stmt->for_loop.initializer);
-                print_indent(--indent);
-                printf("- condition:\n");
-                indent++; 
-                    print_expr(indent, stmt->for_loop.condition);
-                print_indent(--indent);
-                printf("- iteration expression:\n");
-                indent++;
-                    print_statement(indent, stmt->for_loop.iter);
-                print_indent(--indent);
+            if (stmt->for_loop.is_for_in) {
+                printf("For-in loop:\n");
+                print_indent(++indent);
+                    printf("- ident: \"%s\"\n", str_to_cstr(&stmt->for_loop.as_for_in.ident));
+                    print_indent(indent);
+                    printf("- in:\n");
+                    ++indent;
+                        print_expr(indent, stmt->for_loop.as_for_in.in);
+                    --indent;
+            } else {
+                printf("For loop:\n");
+                print_indent(++indent);
+                    printf("- Initializer:\n");
+                    indent++;
+                        print_statement(indent, stmt->for_loop.as_for.initializer);
+                    print_indent(--indent);
+                    printf("- condition:\n");
+                    indent++; 
+                        print_expr(indent, stmt->for_loop.as_for.condition);
+                    print_indent(--indent);
+                    printf("- iteration expression:\n");
+                    indent++;
+                        print_statement(indent, stmt->for_loop.as_for.iter);
+                    --indent;
+            }
+                print_indent(indent);
                 printf("- body:\n");
                 indent++;
                     print_statement(indent, stmt->for_loop.body);
@@ -377,11 +391,15 @@ bool expect(token_type_e expected_type, char* error_msg)
     advance(); return true;
 }
 
-bool expect_semicolon(token_t* belongs_to)
+bool expect_semicolon(span_t* belongs_to)
 {
     token_t* tok = get_cur();
     if (tok->type != TOKEN_SEMICOLON) {
-        make_error_h("Missing semicolon after this token", get_previous()->span, "The missing semicolon belongs to this token", belongs_to->span);
+        if (belongs_to == null) {
+            make_error("Missing semicolon after this token", get_previous()->span);
+        } else {
+            make_error_h("Missing semicolon after this token", get_previous()->span, "The missing semicolon belongs to this token/expression", *belongs_to);
+        }
         return false;
     }
     advance(); return true;
@@ -802,6 +820,7 @@ expr_t* parse_if(void)
 
 expr_t* parse_match(void)
 {
+    // TODO: parse match
     return null;
 }
 
@@ -947,7 +966,7 @@ stmt_t* parse_let(void)
     if (cur->type == TOKEN_ASSIGN) {
         advance();
         let_stmt->let_stmt.initializer = parse_expr(); 
-        expect_semicolon(let);
+        expect_semicolon(&let->span);
     } else { 
         expect(TOKEN_SEMICOLON, "Expected initalizer ('=') or ';' in let statement"); 
     };
@@ -956,11 +975,36 @@ stmt_t* parse_let(void)
     return let_stmt;
 }
 
+// TODO: parse for 
 stmt_t* parse_for(void)
 {
-    token_t* f = get_cur(); advance();
-    
-    return null;
+    token_t* f = get_cur();
+    token_t* cur = get_next();
+    // TODO: parse "for arg, i in args"
+    stmt_t* result = arena_alloc(&arena, sizeof(stmt_t));
+    result->type = STMT_FOR_LOOP; 
+    if (cur->type == TOKEN_IDENT && peek()->type == TOKEN_IN) {
+        // for ... in ... loop
+        advance(); advance();
+        result->for_loop.is_for_in = true;
+        result->for_loop.as_for_in.ident = cur->value.string_value;
+        result->for_loop.as_for_in.in = parse_expr();
+        result->loc = f->span;
+        
+    } else {
+        result->for_loop.is_for_in = false;
+        result->for_loop.as_for.initializer = parse_stmt();
+        result->for_loop.as_for.condition = parse_expr();
+        expect_semicolon(&f->span);
+        result->for_loop.as_for.iter = parse_stmt();
+    }
+
+    if (!expect(TOKEN_LBRACE, "Expected a block in the for loop")) {
+        return result->for_loop.body = null; return result;
+    }
+    retreat();
+    result->for_loop.body = parse_stmt(); 
+    return result;
 }
 
 stmt_t* parse_while(void)
@@ -971,15 +1015,19 @@ stmt_t* parse_while(void)
         recover_until_next_semicolon();
         return null;
     }
-    
-    return null;
+    retreat();
+    stmt_t* result = arena_alloc(&arena, sizeof(stmt_t));
+    result->type = STMT_WHILE_LOOP; result->loc = w->span; 
+    result->while_loop.condition = cond;
+    result->while_loop.body = parse_stmt();
+    return result;
 }
 
 stmt_t* parse_return(bool is_yield)
 {
     token_t* ret = get_cur(); advance();
     expr_t* value = parse_expr();
-    expect_semicolon(ret);
+    expect_semicolon(&ret->span);
     stmt_t* return_stmt = arena_alloc(&arena, sizeof(stmt_t));
     return_stmt->type = is_yield ? STMT_YIELD : STMT_RETURN;
     return_stmt->expr = value;
@@ -1009,17 +1057,6 @@ stmt_t* parse_const_decl(token_t* ident)
     return const_decl_stmt;
 }
 
-stmt_t* parse_assign(token_t* ident)
-{
-    advance();
-    stmt_t* assign_stmt = arena_alloc(&arena, sizeof(stmt_t));
-    assign_stmt->type = STMT_ASSIGN;
-    assign_stmt->assign_stmt.ident = ident->value.string_value;
-    assign_stmt->assign_stmt.value = parse_expr();
-    assign_stmt->loc = ident->span;
-    return assign_stmt;
-}
-
 stmt_t* parse_stmt(void) 
 {
     token_t* keyword = get_cur();
@@ -1037,19 +1074,38 @@ stmt_t* parse_stmt(void)
         token_t* next = get_next(); 
         if (next->type == TOKEN_COLON) {
             return parse_const_decl(keyword);
-        } else if (next->type == TOKEN_ASSIGN) {
-            return parse_assign(keyword);
-        } else {
-            make_error("Expected either ('=') or ('::') after identifier", next->span); recover_until_next_semicolon(); return null;
         }
+        // else fallthrough
+        retreat();
     } else if (keyword->type == TOKEN_EOF) {
         log_fatal("EOF REACHED!"); return null;
-    } else {
-        expr_t* expr = parse_expr();
-        stmt_t* result = arena_alloc(&arena, sizeof(stmt_t));
-        result->type = STMT_EXPR; result->expr = expr;
-        return result;
     }
+    expr_t* lhs = parse_expr();
+    token_t* cur = get_cur();
+    stmt_t* result = arena_alloc(&arena, sizeof(stmt_t));
+    if (cur->type >= TOKEN_PLUS_EQ && cur->type <= TOKEN_ASSIGN) {
+        bin_expr_e kind = cur->type - TOKEN_PLUS_EQ;
+        advance();
+        expr_t* rhs = parse_expr();
+        expr_t* expr = null;
+        if (cur->type == TOKEN_ASSIGN) {
+            expr = rhs;
+        } else {
+            expr = make_bin_expr(lhs, rhs, kind, cur->span); 
+        }
+        result->type = STMT_ASSIGN;
+        result->loc = cur->span;
+        result->assign_stmt.lhs = lhs;
+        result->assign_stmt.rhs = expr;
+        expect_semicolon(&cur->span);
+    }
+    else {
+        result->type = STMT_EXPR; result->expr = lhs; result->loc = lhs->loc;
+        if (!(result->expr->kind == EXPR_BLOCK || result->expr->kind == EXPR_IF)) {
+            expect_semicolon(&lhs->loc);
+        }
+    }
+    return result;
 }
 
 fn_t* parse_fn(token_t* ident)
@@ -1136,7 +1192,7 @@ void parse_const_var_decl(token_t* ident)
         map_sets(&parser.ast->fns, fn->name, fn);
     } else if (next->type == TOKEN_STRUCT) {
         //return parse_struct(ident);
-        log_fatal("parsing STRUCT is not implemented yet");
+        log_fatal("parsing STRUCt is not implemented yet!");
         exit(-4);
     } else if (next->type == TOKEN_ENUM) {
         //return parse_enum(ident);
@@ -1149,7 +1205,7 @@ void parse_const_var_decl(token_t* ident)
     } else {
         // identifier is a constant variable
         expr_t* expr = parse_expr();
-        expect_semicolon(next);
+        expect_semicolon(&next->span);
     }
 }
 

@@ -1,1 +1,1 @@
-"../out/main.exe" build --print-ast "tests/if.rn"
+"../out/main.exe" build --print-ast "tests/str_interpol.rn"

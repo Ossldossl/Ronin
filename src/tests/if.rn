@@ -2,7 +2,7 @@ package main
 
 main :: fn(args: []str) => i32 
 {
-    let test = if 34 + 35 == 69 {
+    let test: i32 = if 34 + 35 == 69 {
         yield true;
     } else {
         yield false;

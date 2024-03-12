@@ -2,6 +2,7 @@
 *.d
 
 .vscode/
+src/out.txt
 
 # Object files
 *.o

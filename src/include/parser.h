@@ -135,11 +135,12 @@ typedef enum {
     BINARY_MUL,
     BINARY_DIV,
     BINARY_MOD,
-    BINARY_BAND,
-    BINARY_LAND,
     BINARY_BOR,
-    BINARY_LOR,
+    BINARY_BAND,
     BINARY_XOR,
+
+    BINARY_LAND,
+    BINARY_LOR,
     BINARY_LSHIFT,
     BINARY_RSHIFT,
 
@@ -160,11 +161,12 @@ const char* bin_kind_strings[] = {
     "BINARY_MUL",
     "BINARY_DIV",
     "BINARY_MOD",
-    "BINARY_BAND",
-    "BINARY_LAND",
     "BINARY_BOR",
-    "BINARY_LOR",
+    "BINARY_BAND",
     "BINARY_XOR",
+
+    "BINARY_LAND",
+    "BINARY_LOR",
     "BINARY_LSHIFT",
     "BINARY_RSHIFT",
 
@@ -237,10 +239,19 @@ typedef enum {
 } stmt_type_e;
 
 typedef struct {
-    stmt_t* initializer;
-    expr_t* condition;
-    stmt_t* iter;
-    stmt_t* body; // mostly compound statement
+    bool is_for_in;
+    union {
+        struct {
+            str_t ident;
+            expr_t* in;
+        } as_for_in;
+        struct {
+            stmt_t* initializer;
+            expr_t* condition;
+            stmt_t* iter;
+        } as_for;
+    };
+    stmt_t* body;
 } for_loop_t;
 
 typedef struct {
@@ -249,8 +260,8 @@ typedef struct {
 } while_loop_t;
 
 typedef struct {
-    str_t ident;
-    expr_t* value;
+    expr_t* lhs;
+    expr_t* rhs;
 } assign_stmt_t;
 
 typedef struct {

@@ -21,7 +21,7 @@ uint32_t lexer_tokenize(char* file_content, size_t file_size, uint8_t file_id);
 void lexer_debug(token_t* start, uint32_t token_count);
 
 enum token_type_e {
-    TOKEN_ERR = 0,
+    TOKEN_ERR,
     TOKEN_INT_LIT,
     TOKEN_FLOAT_LIT,
     TOKEN_STR_LIT,
@@ -36,25 +36,26 @@ enum token_type_e {
 
     TOKEN_PLUS,         // +
     TOKEN_INC,          // ++
-    TOKEN_PLUS_EQ,      // +=
     TOKEN_MINUS,        // -
     TOKEN_DEC,          // --
-    TOKEN_MINUS_EQ,     // -=
     TOKEN_ASTERISK,     // *
-    TOKEN_ASTERISK_EQ,  // *=
     TOKEN_SLASH,        // /
-    TOKEN_SLASH_EQ,     // /=
     TOKEN_MODULO,       // %
-    TOKEN_MODULO_EQ,    // %=
     TOKEN_BOR,          // |
-    TOKEN_BOR_EQ,       // |=
     TOKEN_BAND,         // &
-    TOKEN_BAND_EQ,      // &=
     TOKEN_BNOT,         // ~
     TOKEN_XOR,          // ^
-    TOKEN_XOR_EQ,       // ^=
     TOKEN_LSHIFT,       // <<
     TOKEN_RSHIFT,       // >>
+
+    TOKEN_PLUS_EQ,      // +=
+    TOKEN_MINUS_EQ,     // -=
+    TOKEN_ASTERISK_EQ,  // *=
+    TOKEN_SLASH_EQ,     // /=
+    TOKEN_MODULO_EQ,    // %=
+    TOKEN_BOR_EQ,       // |=
+    TOKEN_BAND_EQ,      // &=
+    TOKEN_XOR_EQ,       // ^=
 
     TOKEN_ASSIGN,       // =
     TOKEN_EQ,           // ==
@@ -124,26 +125,27 @@ const char* token_type_strings[] = {
     "TOKEN_RBRACE",       // }
 
     "TOKEN_PLUS",         // +
-    "TOKEN_INC",          // --
-    "TOKEN_PLUS_EQ",      // +=
+    "TOKEN_INC",          // ++
     "TOKEN_MINUS",        // -
     "TOKEN_DEC",          // --
-    "TOKEN_MINUS_EQ",     // -=
     "TOKEN_ASTERISK",     // *
-    "TOKEN_ASTERISK_EQ",  // *=
     "TOKEN_SLASH",        // /
-    "TOKEN_SLASH_EQ",     // /=
     "TOKEN_MODULO",       // %
-    "TOKEN_MODULO_EQ",    // %=
     "TOKEN_BOR",          // |
-    "TOKEN_BOR_EQ",       // |=
     "TOKEN_BAND",         // &
-    "TOKEN_BAND_EQ",      // &=
     "TOKEN_BNOT",         // ~
     "TOKEN_XOR",          // ^
-    "TOKEN_XOR_EQ",       // ^=
     "TOKEN_LSHIFT",       // <<
     "TOKEN_RSHIFT",       // >>
+
+    "TOKEN_PLUS_EQ",      // +=
+    "TOKEN_MINUS_EQ",     // -=
+    "TOKEN_ASTERISK_EQ",  // *=
+    "TOKEN_SLASH_EQ",     // /=
+    "TOKEN_MODULO_EQ",    // %=
+    "TOKEN_BOR_EQ",       // |=
+    "TOKEN_BAND_EQ",      // &=
+    "TOKEN_XOR_EQ",       // ^=
 
     "TOKEN_ASSIGN",       // =
     "TOKEN_EQ",           // ==
@@ -158,13 +160,14 @@ const char* token_type_strings[] = {
     "TOKEN_LAND",         // &&
 
     "TOKEN_PERIOD",       // .
-    "TOKEN_COMMA",        // ,
+    "TOKEN_COMMA",        "// ",
     "TOKEN_SEMICOLON",    // ;
     "TOKEN_COLON",        // :
 
     "TOKEN_ARROW",        // =>
-    "TOKEN_QUEST",        // ?
-    "TOKEN_DQUEST,"       // ??
+
+    "TOKEN_QUEST",
+    "TOKEN_DQUEST",
 
     // keywords
     "TOKEN_AS",
