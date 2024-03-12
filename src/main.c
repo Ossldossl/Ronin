@@ -6,20 +6,22 @@
 #include <time.h>
 
 #include "include/console.h"
-#include "include/arena.h"
+#include "include/allocators.h"
 #include "include/array.h"
-#undef HAS_ORIGINAL_ERRORS_ARRAY
+#include "include/map.h"
+
 #include "include/lexer.h"
 #include "include/parser.h"
+
+#define HAS_ORIGINAL_ERRORS_ARRAY
+#include "include/misc.h"
+#undef HAS_ORIGINAL_ERRORS_ARRAY
 
 #define null NULL
 
 arena_t arena;
 array_t errors;
 array_t file_names;
-
-#define HAS_ORIGINAL_ERRORS_ARRAY
-#include "include/misc.h"
 
 void print_usage(void)
 {
@@ -28,7 +30,7 @@ void print_usage(void)
     console_reset_bold(); console_set_underline(); console_set_bold();
     printf("USAGE:\n");
     console_reset_bold(); console_reset_underline();
-    printf("    ronin <command> [arguments]\n");
+    printf("    ronin <command> [arguments] <options>\n");
     console_set_underline(); console_set_bold();
     printf("Commands:\n");
     console_reset_underline();
@@ -39,6 +41,13 @@ void print_usage(void)
     console_reset_bold(); console_set_color(COLOR_GREY);
     printf("    same as 'build', but also runs the compiled executable\n");
     console_reset();
+    console_set_underline(); console_set_bold();
+    printf("Options:\n");
+    console_reset_bold(); console_reset_underline();
+    printf("    --print-tokens: Prints all tokens in the first file\n");
+    printf("    --print-ast: Prints the ast of the first file\n");
+    console_reset();
+    return;
 }
 
 HANDLE get_file_handle(const char* file_name, bool write) 
@@ -167,8 +176,9 @@ void print_err_msg(bool is_hint, span_t loc, char* msg)
     console_reset();
 }
 
-[[no_return]] void print_errors_and_exit(char* file_content, int file_size)
+void print_errors(char* file_content, int file_size)
 {
+    u32 _count;
     for_array(&errors, error_t) 
         bool print_extra_hint_line = false;
         c_msg(e->error_loc, e->lvl, " %s", e->error);
@@ -190,7 +200,7 @@ void print_err_msg(bool is_hint, span_t loc, char* msg)
             printf("\n");
         }
     }
-    exit(-4);
+    return;
 }
 
 int main(int argc, char** argv)
@@ -202,8 +212,29 @@ int main(int argc, char** argv)
         exit(-1);
     }
 
-    arena = arena_init();
-    char* file_name = argv[2];
+    LARGE_INTEGER start_time;
+    QueryPerformanceFrequency(&start_time);
+    double freq = start_time.QuadPart;
+    QueryPerformanceCounter(&start_time);
+
+    arena = make_arena();
+    char* command = argv[1];
+    if (strcmp(command, "build") != 0) {
+        log_fatal("Unrecognized command \"%s\"", command);
+        print_usage(); exit(-1);
+    }
+
+    bool print_tokens = false;
+    bool print_ast = false;
+    int i;
+    for (i = 3; i <= argc; i++) {
+        char* opt = argv[i-1]; 
+        if (strcmp("--print-tokens", opt) == 0) print_tokens = true;
+        else if (strcmp("--print-ast", opt) == 0) print_ast = true;
+        else break;
+    }
+    
+    char* file_name = argv[i-1];
     char* file_content;
     int file_size = open_file(file_name, &file_content);
 
@@ -211,17 +242,26 @@ int main(int argc, char** argv)
     file_names = array_init(sizeof(char*));
     char** slot = array_append(&file_names);
     *slot = file_name; 
+
+    LARGE_INTEGER end_init;
+    QueryPerformanceCounter(&end_init);
     
     // generate tokens
-    token_t* start = arena.first->cur;
+    token_t* start = arena.buckets[0]->cur;
     uint32_t token_count = lexer_tokenize(file_content, file_size, 0); // 0 => file_id
-    lexer_debug(start, token_count);
+    if (print_tokens) lexer_debug(start, token_count);
+
+    LARGE_INTEGER end_lex;
+    QueryPerformanceCounter(&end_lex);
 
     // parse tokens
     ast_t* ast = parser_parse_tokens(start, token_count);
-    parser_debug(ast);
+    LARGE_INTEGER end_parse;
+    QueryPerformanceCounter(&end_parse);
+    if (print_ast)    parser_debug(ast);
     if (array_len(&errors) > 0) {
-        print_errors_and_exit(file_content, file_size);
+        print_errors(file_content, file_size);
+        goto compiler_end;
     }
     
     // resolve types and functions
@@ -229,4 +269,17 @@ int main(int argc, char** argv)
     // generate ir
     // optimize
     // register allocation && asm generation
+
+compiler_end:
+    LARGE_INTEGER end;
+    QueryPerformanceCounter(&end);
+    double all = (end.QuadPart - start_time.QuadPart) * 1000.f;
+    all /= freq;
+    double init = (end_init.QuadPart - start_time.QuadPart) * 1000.f;
+    init /= freq;
+    double lex = (end_lex.QuadPart - end_init.QuadPart) * 1000.f;
+    lex /= freq;
+    double parse = (end_parse.QuadPart - end_lex.QuadPart) * 1000.f;
+    parse /= freq;
+    log_info("Compilation took %3.3lfms (init: %3.3lfms, lex: %3.3lfms, parse: %3.3lfms)", all, init, lex, parse);
 }

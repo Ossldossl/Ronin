@@ -72,9 +72,11 @@ enum token_type_e {
     TOKEN_COMMA,        // ,
     TOKEN_SEMICOLON,    // ;
     TOKEN_COLON,        // :
-    TOKEN_DCOLON,       // ::
 
     TOKEN_ARROW,        // =>
+
+    TOKEN_QUEST,
+    TOKEN_DQUEST,
 
     // keywords
     TOKEN_AS,
@@ -159,9 +161,10 @@ const char* token_type_strings[] = {
     "TOKEN_COMMA",        // ,
     "TOKEN_SEMICOLON",    // ;
     "TOKEN_COLON",        // :
-    "TOKEN_DCOLON",       // ::
 
     "TOKEN_ARROW",        // =>
+    "TOKEN_QUEST",        // ?
+    "TOKEN_DQUEST,"       // ??
 
     // keywords
     "TOKEN_AS",

@@ -1,9 +1,11 @@
 #pragma once
 #include "lexer.h"
+#include "map.h"
 
 // types: globale hashmap für types
 //        alle referenzen (wie return values) sind pointer zu den jeweiligen typen  
 typedef struct type_t type_t;
+typedef struct type_ref_t type_ref_t;
 typedef struct expr_t expr_t;
 typedef struct stmt_t stmt_t;
 typedef struct trait_t trait_t;
@@ -13,16 +15,31 @@ struct trait_t{
     array_t* fns;
 };
 
+// first, type_t* in fns points to a str_t with the identifier of the expected type
+// later in type resolution type_t* actually begins to point to a valid type from the map
 struct type_t {
-    uint16_t trait_count;
-    trait_t* implemented_traits; // TODO: Maybe switch to hashmap
-    uint8_t fields_count;
-    field_t* fields;
+    array_t traits;
+    array_t fields;
+    span_t loc;
+};
+
+struct type_ref_t {
+    bool inferred;
+    bool resolved;
+    union {
+        type_t* resolved_type;
+        type_ref_t* rhs;
+        str_t ident;
+    };
+    bool is_array;
+    expr_t* array_len;
+    bool is_weak;
+    span_t loc;
 };
 
 struct field_t {
     str_t name;
-    type_t* type;
+    type_ref_t type;
 };
 
 typedef enum {
@@ -92,6 +109,7 @@ typedef enum {
     UNARY_DEREF,      // *a
     UNARY_NEGATE,     // -a
     UNARY_ADDRESS_OF, // &a
+    UNARY_ARRAY_OF, // []i32 / [5]i32
 } un_expr_e;
 
 #ifdef STRINGS_IMPLEMENTATION
@@ -160,36 +178,36 @@ const char* bin_kind_strings[] = {
 typedef struct {
     un_expr_e kind;
     expr_t* rhs;
-    type_t* type;
+    type_ref_t type;
+    expr_t* array_type_len;
 } un_expr_t;
 
 typedef struct {
     bin_expr_e kind;
     expr_t* lhs;
     expr_t* rhs;
-    type_t* type;
+    type_ref_t type;
 } bin_expr_t;
 
 typedef struct {
-    size_t stmt_count;
-    stmt_t* stmts;
-    type_t* yields;
+    array_t stmts;
+    type_ref_t yields;
 } block_expr_t;
+
+typedef struct arms_t {
+    expr_t* condition;
+    expr_t* block;
+} arm_t;
 
 typedef struct {
     expr_t* val;
-    uint16_t arms_count;
-    struct arms_t {
-        expr_t* condition;
-        block_expr_t block;
-        struct arms_t* next;
-    }* arms;
+    array_t* arms;
 } match_expr_t;
 
 typedef struct {
     expr_t* condition;
-    block_expr_t case_true;
-    block_expr_t case_false;
+    expr_t* body;
+    expr_t* alternative;
 } if_expr_t;
 
 struct expr_t {
@@ -207,6 +225,7 @@ struct expr_t {
 
 typedef enum {
     STMT_EXPR,
+    STMT_ASSIGN,
     STMT_FOR_LOOP,
     STMT_WHILE_LOOP,
     STMT_RETURN,
@@ -214,26 +233,53 @@ typedef enum {
     STMT_LET,
 } stmt_type_e;
 
+typedef struct {
+    stmt_t* initializer;
+    expr_t* condition;
+    stmt_t* iter;
+    stmt_t* body; // mostly compound statement
+} for_loop_t;
+
+typedef struct {
+    expr_t* condition;
+    stmt_t* body;
+} while_loop_t;
+
+typedef struct {
+    str_t ident;
+    expr_t* value;
+} assign_stmt_t;
+
+typedef struct {
+    str_t ident;
+    type_ref_t type;
+    expr_t* initializer;
+    bool is_const;
+} let_stmt_t;
+
 struct stmt_t {
     stmt_type_e type;
     union {
-        expr_t expr;
+        expr_t* expr;
+        assign_stmt_t assign_stmt;
+        for_loop_t for_loop;
+        while_loop_t while_loop;
+        let_stmt_t let_stmt;
     };
+    span_t loc;
 };
 
 typedef struct {
     str_t name;
-    uint8_t args_count;
-    field_t* args;
-    size_t stmt_count;
-    stmt_t* body;
+    array_t args;
+    array_t body;
+    type_ref_t return_type;
+    span_t loc;
 } fn_t;
 
 typedef struct {
     array_t import_paths; // todo
-    size_t fn_count;
-    fn_t* fns;
-    expr_t* test; //remove
+    map_t fns;
 } ast_t;
     
 ast_t* parser_parse_tokens(token_t* tokens, uint32_t token_count);

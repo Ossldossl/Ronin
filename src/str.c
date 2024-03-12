@@ -2,25 +2,24 @@
 #include <string.h>
 #include <xmmintrin.h>
 #include "include/str.h"
-#include "include/arena.h"
+#include "include/allocators.h"
 
-#define USE_SIMD
+//#define USE_SIMD
 
 extern arena_t arena;
 
-char* str_to_cstr(str_t str)
+char* str_to_cstr(str_t* str)
 {
-    char* result = arena_alloc(&arena, str.len+1);
-    memcpy_s(result, str.len+1, str.data, str.len);
-    result[str.len] = '\0';
+    char* result = arena_alloc(&arena, str->len+1);
+    memcpy_s(result, str->len+1, str->data, str->len);
+    result[str->len] = '\0';
     return result;
 }
 
-// ACHTUNG: NICHT IM LEXER BENUTZEN!!!!
 str_t str_from_char(char* source, uint16_t len)
 {
     str_t result;
-    result.data = arena_alloc(&arena, len+1);
+    result.data = malloc(len+1);
     result.len = len;
     memcpy_s(result.data, result.len +1, source, len);
     result.data[len] = 0;

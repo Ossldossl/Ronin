@@ -4,7 +4,7 @@
 #define TOKEN_STRINGS_IMPLEMENTATION
 #include "include/lexer.h"
 #include "include/console.h"
-#include "include/arena.h"
+#include "include/allocators.h"
 #include "include/array.h"
 #include "include/str.h"
 
@@ -40,7 +40,7 @@ void lexer_debug(token_t* start, uint32_t token_count)
             }
             case TOKEN_STR_LIT:
             case TOKEN_IDENT: {
-                printf("%s(\"%s\") ", token_type_strings[cur->type], str_to_cstr(cur->value.string_value));
+                printf("%s(\"%s\") ", token_type_strings[cur->type], str_to_cstr(&cur->value.string_value));
                 arena_free_last(&arena); break;
             }
             case TOKEN_INT_LIT: {
@@ -184,7 +184,6 @@ void lexer_parse_bin(void)
 }
 
 // parses integer and floating point literals
-// TODO: when prefix minus before number literal, negate number literal
 static int64_t lexer_parse_int(void)
 {
     int64_t result = 0;
@@ -602,6 +601,13 @@ uint32_t lexer_tokenize(char* file_content, size_t file_size, uint8_t file_id)
                 }
                 make_token_nv(TOKEN_NOT, LOC(lexer.line, lexer.col, 1)); break;
             }
+            case '?': {
+                if (peek() == '?') {
+                    advance();
+                    make_token_nv(TOKEN_DQUEST, LOC(lexer.line, lexer.col, 2)); break;
+                }
+                make_token_nv(TOKEN_QUEST, LOC(lexer.line, lexer.col, 1)); break;
+            }
             case '.': {
                 make_token_nv(TOKEN_PERIOD, LOC(lexer.line, lexer.col, 1)); break;
             }
@@ -612,10 +618,6 @@ uint32_t lexer_tokenize(char* file_content, size_t file_size, uint8_t file_id)
                 make_token_nv(TOKEN_SEMICOLON, LOC(lexer.line, lexer.col, 1)); break;
             }
             case ':': {
-                if (peek() == ':') {
-                    advance();
-                    make_token_nv(TOKEN_DCOLON, LOC(lexer.line, lexer.col, 2)); break;
-                }
                 make_token_nv(TOKEN_COLON, LOC(lexer.line, lexer.col, 1)); break;
             }
             default: {

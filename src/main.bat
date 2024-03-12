@@ -1,1 +1,1 @@
-"../out/main.exe" build "tests/fn.rn"
+"../out/main.exe" build --print-ast "tests/types.rn"

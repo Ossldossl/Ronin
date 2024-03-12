@@ -22,91 +22,100 @@ void* map_get(map_t* root, char* key, uint32_t len)
     map_t* cur = root;
     while (true) {
         if (cur == null || cur->hash == hash) break;
-        else if (hash < cur->hash) cur = cur->left;
-        else cur = cur->right;
+        cur = hash < cur->hash ? cur->left : cur->right;
     }
-    if (cur) return cur->value;
-    else return null;
+    return cur ? cur->value : null;
 }
 
-// FIXME: No check if old_child is really a child of parent
-static void replace_child(map_t* parent, map_t* old_child, map_t* new_child)
+static void rotate_right(map_t* x)
 {
-    free(old_child->value);
-    free(old_child);
-    if (parent->left == old_child) {
-        parent->left = new_child;
-    } else {
-        parent->right = new_child;
+    map_t* y = x->left;
+    x->left = y->right;
+    if (y->right) {
+        y->right->parent = x;
     }
-    if (new_child) {
-        new_child->parent = parent;
+    y->parent = x->parent;
+    if (x->parent) {
+        if (x == (x->parent)->right) {
+            x->parent->right = y;
+        }
+        else {
+            x->parent->left = y;
+        }
     }
+    y->right = x;
+    x->parent = y;
 }
 
-static void rotate_right(map_t* node)
+static void rotate_left(map_t* x)
 {
-    map_t* parent = node->parent;
-    map_t* left_child = node->left;
-    node->left = left_child->right;
-    if (left_child->right) {
-        left_child->right->parent = node;
+    map_t* y = x->right;
+    x->right = y->left;
+    if (y->left) {
+        y->left->parent = x;
     }
-    left_child->right = node;
-    node->parent = left_child;
-    replace_child(parent, node, left_child);
-}
-
-static void rotate_left(map_t* node)
-{
-    map_t* parent = node->parent; map_t* right_child = node->right;
-
-    node->right = right_child->left;
-    if (right_child->left) {
-        right_child->left->parent = node;
+    y->parent = x->parent;
+    if (x->parent) {
+        if (x == (x->parent)->left) {
+            x->parent->left = y;
+        }
+        else {
+            x->parent->right = y;
+        }
     }
-    right_child->left = node;
-    node->parent = right_child;
-    replace_child(parent, node, right_child);
+    y->left = x;
+    x->parent = y;
 }
 
 static void rebalance_tree(map_t* cur)
 {
-    map_t* parent = cur->parent;
-    if (parent == null) { cur->is_red = false; return; }
-    if (!parent->is_red) return;
-
-    map_t* gp = parent->parent;
-    if (gp == null) {
-        // case 2: parent is root
-        parent->is_red = false; return;
-    }
-    bool uncle_is_left = parent->hash > gp->hash;
-    map_t* uncle = uncle_is_left ? gp->left : gp->right;
-    if (uncle && uncle->is_red) {
-        // case 3: uncle is red
-        parent->is_red = false; gp->is_red = true; uncle->is_red = false;
-        return rebalance_tree(gp);
-    }
-
-    if (!uncle_is_left) {
-        if (cur == parent->right) {
-            rotate_left(parent); parent = cur;
+    cur->is_red = true;
+    while ( (cur->parent) && (cur->parent->is_red)) {
+        if (cur->parent->parent == null) break;
+        if (cur->parent == cur->parent->parent->left) {
+            map_t* uncle = cur->parent->parent->right;
+            if (uncle == null) break;
+            if (uncle->is_red) {
+                // case 1: switch colors
+                cur->parent->is_red = false; uncle->is_red = false;
+                cur->parent->parent->is_red = true;
+                cur = cur->parent->parent;
+            } else {
+                if (cur == cur->parent->right) {
+                    // case 2: move cur up and rotate
+                    cur = cur->parent;
+                    rotate_left(cur);
+                }
+                else {
+                // case 3
+                    cur->parent->is_red = false;
+                    cur->parent->parent->is_red = true;
+                    rotate_right(cur->parent->parent);
+                }
+            }
+        } else {
+            map_t* uncle = cur->parent->parent->left;
+            if (uncle == null) break;
+            if (uncle->is_red) {
+                // case 1: switch colors
+                cur->parent->is_red = false; uncle->is_red = false;
+                cur->parent->parent->is_red = true;
+                cur = cur->parent->parent;
+            } else {
+                if (cur == cur->parent->left) {
+                    // case 2: move cur up and rotate
+                    cur = cur->parent;
+                    rotate_left(cur);
+                }
+                else {
+                // case 3
+                    cur->parent->is_red = false;
+                    cur->parent->parent->is_red = true;
+                    rotate_right(cur->parent->parent);
+                }
+            }
         }
-        rotate_right(gp);
-        parent->is_red = false;
-        gp->is_red = true;
-        return;
     }
-
-    // parent is right child of gp
-    if (cur == parent->left) {
-        rotate_right(parent);
-        parent = cur;
-    }
-    rotate_left(gp);
-    parent->is_red = false; gp->is_red = true;
-    return;
 }
 
 void map_set(map_t* root, char* key, uint32_t len, void* value)
@@ -120,6 +129,10 @@ void map_set(map_t* root, char* key, uint32_t len, void* value)
     while (true) {
         if (hash == cur->hash) {
             cur->value = value;
+            return;
+        } else if (cur->hash == 0) {
+            // root
+            cur->hash = hash; cur->value = value;
             return;
         }
         if (hash < cur->hash) {
@@ -140,4 +153,56 @@ void map_set(map_t* root, char* key, uint32_t len, void* value)
     new->is_red = true;
 
     rebalance_tree(new);
+}
+
+void* map_gets(map_t* root, str_t key)
+{
+    return map_get(root, key.data, key.len);
+}
+
+void map_sets(map_t* root, str_t key, void* value)
+{
+    return map_set(root, key.data, key.len, value);
+}
+
+map_t* map_next(map_t* cur)
+{
+    if (cur->parent == null) {
+        // cur is root
+        if (cur->right == null) return null;
+        cur = cur->right;
+        while(cur->left) {
+            cur = cur->left;
+        }
+    } else {
+        if (cur->right == null) {
+            if (cur == cur->parent->left) {
+                cur = cur->parent;
+            } else {
+                cur = cur->parent->parent;
+            }
+        } else { 
+            cur = cur->right;
+            while (cur->left) {
+                cur = cur->left;
+            }
+        }
+    }
+    return cur;
+}
+
+// traverses tree from the first node to the node with the zero-based index 'index'
+map_t* map_get_at(map_t* root, uint32_t index)
+{
+    // first find the first node
+    map_t* cur = root;
+    while (cur->left) {
+        cur = cur->left;
+    }   
+    // then advance the node until the right node is found
+    for (int i = 0; i < index; i++) {
+        cur = map_next(cur);
+        if (cur == null) break;
+    }
+    return cur;
 }

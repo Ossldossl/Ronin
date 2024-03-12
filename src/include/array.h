@@ -4,7 +4,7 @@
 #define ARRAY_GROW_FACTOR 1.5f
 #define ARRAY_START_SIZE 2
 
-#define for_array(array, type) uint32_t _count = array_len((array));for(int i=0;i<_count;i++) {type*e = array_get((array),i);
+#define for_array(array, type) _count = array_len((array));for(int i=0;i<_count;i++) {type*e = array_get((array),i);
 
 typedef struct {
     void* data;

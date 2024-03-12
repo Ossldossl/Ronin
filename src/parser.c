@@ -1,11 +1,14 @@
+#include <complex.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #define STRINGS_IMPLEMENTATION
-#include "include/parser.h"
-#include "include/arena.h"
-#include "include/array.h"
 #include "include/misc.h"
+#include "include/allocators.h"
+#include "include/array.h"
+#include "include/map.h"
 #include "include/console.h"
+#include "include/parser.h"
 
 #define LOC(l, c, le) (span_t) {.line = (l), .col = (c), .len = (le), .file_id=(parser.cur_file_id)}
 
@@ -21,10 +24,11 @@ extern arena_t arena;
 extern array_t errors;
 
 parser_t parser;
+map_t types;
 
 static void print_indent(int indent)
 {
-    for (int i = 0; i < indent*2; i++) {
+    for (int i = 0; i < indent*4; i++) {
         printf(" ");
     }
 }
@@ -38,69 +42,285 @@ static void print_post_value(int indent, post_expr_t* post)
     } else if (post->val_kind == POST_FLOAT) {
         printf("- value: %lf\n", post->value.double_value);
     } else if (post->val_kind == POST_STR) {
-        printf("- value: \"%s\"\n", str_to_cstr(post->value.string_value));
+        printf("- value: \"%s\"\n", str_to_cstr(&post->value.string_value));
         arena_free_last(&arena);
     } else if (post->val_kind == POST_IDENT) {
-        printf("- ident: %s\n", str_to_cstr(post->value.string_value));
+        printf("- ident: %s\n", str_to_cstr(&post->value.string_value));
         arena_free_last(&arena);
     }
 }
 
-static void parser_print_expr(int indent, expr_t* expr)
+static void print_statement(u32 indent, stmt_t* stmt);
+static void print_expr(int indent, expr_t* expr);
+
+static void print_type(u32 indent, type_ref_t* type)
+{
+    if (type->inferred) {
+        print_indent(indent);
+        printf("- (to be inferred)\n");
+        return;
+    }    
+
+    print_indent(indent);
+    if (type->resolved) {
+        printf("- resolved\n");
+    } else if (!type->is_array) {
+        printf("- %s (to be resolved)\n", str_to_cstr(&type->ident));
+    } else printf("\r");
+
+    if (type->is_array) {
+        print_indent(indent);
+        printf("- array of:\n");
+        indent++;
+            print_type(indent, type->rhs);
+        --indent; 
+        print_indent(indent);
+        printf("- array_len:\n");
+        indent++;
+            print_expr(indent, type->array_len);
+        indent--;
+    }
+
+    print_indent(indent);
+    printf("- weak?: %s\n", type->is_weak ? "true" : "false");
+}
+
+static void print_expr(int indent, expr_t* expr)
 {
     if (expr == null) return;
     print_indent(indent);
-    if (expr->kind == EXPR_BINARY) {
-        printf("- Binary Expression:\n");
-        print_indent(indent+1);
-        printf("- type: %s\n", bin_kind_strings[expr->bin.kind]);
-        parser_print_expr(indent+1, expr->bin.lhs);
-        parser_print_expr(indent+1, expr->bin.rhs);
-    } else if (expr->kind == EXPR_POST) {
-        printf("- %s:\n", expr->post.op_kind == POST_NONE ? "Literal" : "Postfix expr");
-        print_indent(indent+1);
-        printf("- op_type: %s\n", post_op_kind_strings[expr->post.op_kind]);
-        print_indent(indent+1);
-        if (expr->post.op_kind == POST_NONE || expr->post.op_kind == POST_INC || expr->post.op_kind == POST_DEC) {
-            print_post_value(indent, &expr->post); return;
-        } else if (expr->post.op_kind == POST_MEMBER_ACCESS) {
-            print_post_value(indent, &expr->post);
+    switch (expr->kind) {
+        case (EXPR_BINARY): {
+            printf("- Binary Expression:\n");
             print_indent(indent+1);
-            printf("- lhs: \n"); parser_print_expr(indent+2, expr->post.lhs);
-        } else if (expr->post.op_kind == POST_ARRAY_ACCESS) {
-            printf("- array_index:\n"); print_indent(indent+2); print_post_value(indent+1, &expr->post.array_index->post);
+            printf("- type: %s\n", bin_kind_strings[expr->bin.kind]);
+            print_expr(indent+1, expr->bin.lhs);
+            print_expr(indent+1, expr->bin.rhs);
+        } break;
+        case (EXPR_POST): {
+            printf("- %s:\n", expr->post.op_kind == POST_NONE ? "Literal" : "Postfix expr");
             print_indent(indent+1);
-            printf("- lhs:\n"); 
-            parser_print_expr(indent+2, expr->post.lhs);
-        } else if (expr->post.op_kind == POST_FN_CALL) {
-            printf("- args: \n"); 
-            indent++;
-            for_array(&expr->post.args, expr_t*) 
-                parser_print_expr(indent+1, *e);
+            printf("- op_type: %s\n", post_op_kind_strings[expr->post.op_kind]);
+            print_indent(indent+1);
+            if (expr->post.op_kind == POST_NONE || expr->post.op_kind == POST_INC || expr->post.op_kind == POST_DEC) {
+                print_post_value(indent, &expr->post); return;
+            } else if (expr->post.op_kind == POST_MEMBER_ACCESS) {
+                print_post_value(indent, &expr->post);
+                print_indent(indent+1);
+                printf("- lhs: \n"); print_expr(indent+2, expr->post.lhs);
+            } else if (expr->post.op_kind == POST_ARRAY_ACCESS) {
+                printf("- array_index:\n"); print_indent(indent+2); print_post_value(indent+1, &expr->post.array_index->post);
+                print_indent(indent+1);
+                printf("- lhs:\n"); 
+                print_expr(indent+2, expr->post.lhs);
+            } else if (expr->post.op_kind == POST_FN_CALL) {
+                printf("- args: \n"); 
+                indent++;
+                u32 _count;
+                for_array(&expr->post.args, expr_t*) 
+                    print_expr(indent+1, *e);
+                }
+                if (expr->post.args.used == 0) {print_indent(indent+2); printf("null\n");}
+                indent--;
+                print_indent(indent+1);
+                printf("- lhs:\n");
+                print_expr(indent+2, expr->post.lhs);
             }
-            if (expr->post.args.used == 0) {print_indent(indent+2); printf("null\n");}
-            indent--;
+        } break;
+        case (EXPR_UNARY): {
+            printf("- Unary Expression:\n");
             print_indent(indent+1);
-            printf("- lhs:\n");
-            parser_print_expr(indent+2, expr->post.lhs);
+            printf("- type: %s\n", unary_kind_strings[expr->un.kind]);
+            print_expr(indent+1, expr->un.rhs);
         }
-    } else if (expr->kind == EXPR_UNARY) {
-        printf("- Unary Expression:\n");
-        print_indent(indent+1);
-        printf("- type: %s\n", unary_kind_strings[expr->un.kind]);
-        parser_print_expr(indent+1, expr->un.rhs);
+        case (EXPR_BLOCK): {
+            printf("- Block Expression:\n");
+            indent++;
+            for_to(i, expr->block.stmts.used) {
+                stmt_t* stmt = array_get(&expr->block.stmts, i);
+                print_statement(indent+1, stmt);
+            } 
+        } break;
+        case (EXPR_MATCH): {
+            printf("- Match Expression:\n");
+            print_indent(++indent);
+                printf("- value to match: ");
+                ++indent;
+                    print_expr(indent, expr->match.val);
+                --indent;
+            u32 _count;
+            for_array(expr->match.arms, arm_t)
+                print_indent(indent);
+                printf("- case %d\n", i);
+                print_indent(++indent);
+                    printf("- condition:\n");
+                    ++indent;
+                        print_expr(indent, e->condition);
+                    print_indent(--indent);
+                    printf("- block:\n");
+                    indent++;
+                        print_expr(indent, e->block);
+                    --indent;
+                --indent;
+            }
+        } break;
+        case (EXPR_IF): {
+            printf("- If Expression:\n");
+            print_indent(++indent);
+                printf("- condition:\n");
+                ++indent;
+                    print_expr(indent, expr->if_expr.condition);
+                --indent;
+                printf("- body:\n");
+                ++indent;
+                    print_expr(indent, expr->if_expr.body);
+                --indent;
+                printf("- alternative:\n");
+                ++indent;
+                    print_expr(indent, expr->if_expr.alternative);
+                --indent;
+        } break;
     }
+}
+
+static void print_statement(u32 indent, stmt_t* stmt)
+{
+    if (stmt == null) return;
+    print_indent(indent);
+    switch (stmt->type) {
+        case STMT_EXPR: {
+            printf("\r");
+            print_expr(indent, stmt->expr);
+        } break;
+        case STMT_ASSIGN: {
+            printf("- Assign Statement:\n");
+            print_indent(++indent);
+                char* ident = str_to_cstr(&stmt->assign_stmt.ident);
+                printf("- ident: %s\n", ident);
+                arena_free_last(&arena); 
+                printf("- value:\n");
+                print_indent(++indent);
+                    print_expr(indent, stmt->assign_stmt.value);
+    	        --indent;
+            --indent;
+        } break;
+        case STMT_FOR_LOOP: {
+            printf("- For Loop:\n");
+            print_indent(++indent);
+                printf("- Initializer:\n");
+                indent++;
+                    print_statement(indent, stmt->for_loop.initializer);
+                print_indent(--indent);
+                printf("- condition:\n");
+                indent++; 
+                    print_expr(indent, stmt->for_loop.condition);
+                print_indent(--indent);
+                printf("- iteration expression:\n");
+                indent++;
+                    print_statement(indent, stmt->for_loop.iter);
+                print_indent(--indent);
+                printf("- body:\n");
+                indent++;
+                    print_statement(indent, stmt->for_loop.body);
+                --indent;
+            --indent;
+        } break;
+        case STMT_WHILE_LOOP: {
+            printf("- while loop:\n");
+            print_indent(++indent);
+                printf("- condition:\n");
+                ++indent;
+                    print_expr(indent, stmt->while_loop.condition);
+                print_indent(--indent);
+                printf("- body:\n");
+                ++indent;
+                    print_statement(indent, stmt->while_loop.body);
+                --indent;
+            --indent;
+        } break;
+        case STMT_RETURN: {
+            printf("- return:\n");
+            print_indent(++indent);
+                printf("- expr:\n");
+                indent++;
+                    print_expr(indent, stmt->expr);
+                indent--;
+            indent--;
+        } break;
+        case STMT_YIELD: {
+            printf("- yield:\n");
+            print_indent(++indent);
+                printf("- expr:\n");
+                indent++;
+                    print_expr(indent, stmt->expr);
+                indent--;
+            indent--;
+        } break;
+        case STMT_LET: {
+            printf("- let statement:\n");
+            print_indent(++indent);
+                char* ident = str_to_cstr(&stmt->let_stmt.ident);
+                printf("- ident: %s\n", ident);
+                arena_free_last(&arena);
+                print_indent(indent);
+                printf("- type:\n");
+                ++indent;
+                    print_type(indent, &stmt->let_stmt.type);
+                --indent;
+                print_indent(indent);
+                printf("- initializer: %s", stmt->let_stmt.initializer==null ? "empty\n" : "\n");
+                ++indent;
+                    print_expr(indent, stmt->let_stmt.initializer);
+                --indent;
+            --indent;
+        }
+    }
+}
+
+void print_fn(fn_t* fn)
+{
+    printf("FUNCTION %s (", str_to_cstr(&fn->name));
+    uint32_t _count;
+    for_array(&fn->args, field_t)
+        printf("%s", str_to_cstr(&e->name));
+        if (i < fn->args.used-1) {
+            printf(", ");
+        }
+    }
+    printf(")");
+    if (!fn->return_type.resolved && !fn->return_type.inferred) {
+        printf("-> %s", str_to_cstr(&fn->return_type.ident));
+    }
+    printf("{\n");
+
+    u32 indent = 1;
+    for_array(&fn->body, stmt_t*) 
+        print_statement(indent, *e);
+    }
+
+    printf("ENDFUNCTION %s\n\n", str_to_cstr(&fn->name));
 }
 
 void parser_debug(ast_t* ast)
 {
-    expr_t* expr = ast->test;
-    parser_print_expr(0, expr);
+    arena_begin_section(&arena);
+    // iterate over all functions in current file
+    map_t* cur = map_get_at(&ast->fns, 0); 
+    if (cur == null) {
+        log_fatal("No functions in file!"); exit(-4);
+    }
+    do {
+        fn_t* fn = cur->value;
+        if (fn == null) { log_fatal("fn_t in map should never be null!"); return; }
+        print_fn(fn);
+    } while ((cur = map_next(cur)));
+    arena_end_section(&arena);
 }
 
 inline static token_t* get_next(void) 
 {
-    if (++parser.index >= parser.token_count) {
+    parser.index++;
+    if (parser.index >= parser.token_count) {
         return &parser.tokens[parser.token_count-1];
     }
     return &parser.tokens[parser.index];
@@ -168,6 +388,19 @@ void recover_until_next_semicolon(void)
         if (cur->type == TOKEN_EOF) break;
         cur = get_next();
     }
+    advance();
+}
+
+void recover_until_next_rbrace(void)
+{
+    token_t* cur = get_cur();
+    if (cur == null) return retreat();
+    while (cur->type != TOKEN_RBRACE) {
+        if (cur->type == TOKEN_EOF) break;
+        cur = get_next();
+    }
+    advance();
+
 }
 
 void recover_until_newline(void)
@@ -182,6 +415,13 @@ void recover_until_newline(void)
     } while (cur->span.line != last_line);
 }
 
+bool is_valid_type_expr(expr_t* expr)
+{
+    return 
+        (expr->kind == EXPR_UNARY && expr->un.kind == UNARY_ARRAY_OF)
+     || (expr->kind == EXPR_POST && expr->post.op_kind == POST_IDENT); 
+}
+
 expr_t* make_bin_expr(expr_t* lhs, expr_t* rhs, bin_expr_e kind, span_t loc)
 {
     expr_t* result = arena_alloc(&arena, sizeof(expr_t));
@@ -190,7 +430,7 @@ expr_t* make_bin_expr(expr_t* lhs, expr_t* rhs, bin_expr_e kind, span_t loc)
     result->bin.lhs  = lhs;
     result->bin.rhs  = rhs;
     result->bin.kind = kind;
-    result->bin.type = null;
+    result->bin.type.inferred = true;
     return result;
 }
 
@@ -201,7 +441,7 @@ expr_t* make_un_expr(expr_t* rhs, un_expr_e kind, span_t loc)
     result->loc     = loc;
     result->un.rhs  = rhs;
     result->un.kind = kind;
-    result->un.type = null;
+    result->un.type.inferred = true;
     return result;
 }
 
@@ -230,6 +470,7 @@ expr_t* make_post_lhs(post_op_kind_e op_kind, expr_t* lhs, span_t loc)
 
 void parse_import(void)
 {
+    // TODO: REDO IMPORT 
     token_t* import = get_cur();
     token_t* ident = get_next();
     if (ident->type != TOKEN_IDENT) {
@@ -242,7 +483,7 @@ void parse_import(void)
     }
     uint8_t len = ident->span.len;
     token_t* cur = get_next();
-    while (cur->type == TOKEN_DCOLON) {
+    while (cur->type == TOKEN_COLON && peek()->type == TOKEN_COLON) {
         len += cur->span.len;
         cur = get_next();
         if (cur->type != TOKEN_IDENT) {
@@ -526,34 +767,284 @@ expr_t* parse_expr(void)
     return result;
 }
 
+type_ref_t* parse_type(void)
+{
+    token_t* cur = get_cur();
+    if (cur->type == TOKEN_LBRACKET) {
+        cur = get_next();
+        expr_t* array_len = null;
+        if (cur->type != TOKEN_RBRACKET) {
+            array_len = parse_expr();
+        }
+        if (!expect(TOKEN_RBRACKET, "Expected closing bracket after array len")) { return null; }
+        type_ref_t* rhs = parse_type();
+        type_ref_t* result = arena_alloc(&arena, sizeof(type_ref_t));
+        result->is_array = true; result->array_len = array_len;
+        result->resolved = rhs->resolved; result->rhs = rhs;
+        result->loc = cur->span;
+        result->inferred = false;
+        return result;
+    } 
+    else if (cur->type == TOKEN_IDENT) {
+        type_ref_t* result = arena_alloc(&arena, sizeof(type_ref_t));
+        result->is_weak = false; 
+        if (peek()->type == TOKEN_QUEST) {
+            advance(); 
+            result->is_weak = true; 
+        }
+        result->is_array = false; result->array_len = null; 
+        result->resolved_type = map_gets(&types, cur->value.string_value);
+        if (result->resolved_type == null) {
+            result->resolved = false;
+            result->ident = cur->value.string_value;
+        } else result->resolved = true;
+        result->loc = cur->span;
+        result->inferred = false;
+        advance();
+        return result; 
+    }
+    make_error("Expected a type here", cur->span);
+    return null;
+}
+
+bool parse_type_inline(type_ref_t* result, bool custom_error_message)
+{
+    token_t* cur = get_cur();
+    if (cur->type == TOKEN_LBRACKET) {
+        cur = get_next();
+        expr_t* array_len = null;
+        if (cur->type != TOKEN_RBRACKET) {
+            array_len = parse_expr();
+        }
+        if (!expect(TOKEN_RBRACKET, "Expected closing bracket after array len")) { recover_until_newline(); return false; }
+        type_ref_t* rhs = parse_type();
+        result->is_array = true; result->array_len = array_len;
+        result->resolved = rhs->resolved; result->rhs = rhs;
+        result->loc = cur->span;
+        result->inferred = false;
+        return true;
+    } 
+    else if (cur->type == TOKEN_IDENT) {
+        result->is_weak = false; 
+        if (peek()->type == TOKEN_QUEST) {
+            advance();
+            result->is_weak = true; 
+        }
+        result->is_array = false; result->array_len = null; 
+        result->resolved_type = map_gets(&types, cur->value.string_value);
+        if (result->resolved_type == null) {
+            result->resolved = false;
+            result->ident = cur->value.string_value;
+        } else result->resolved = true;
+        result->loc = cur->span;
+        result->inferred = false;
+        advance();
+        return true; 
+    }
+    if (!custom_error_message) make_error("Expected a type here", cur->span);
+    result->inferred = true;
+    return false;
+}
+
+stmt_t* parse_let(void)
+{
+    token_t* let = get_cur();
+    token_t* cur = get_next();
+    if (cur->type != TOKEN_IDENT) {
+        make_error("Expected identifier after let", cur->span);
+        return null;
+    }
+
+    stmt_t* let_stmt = arena_alloc(&arena, sizeof(stmt_t));
+    let_stmt->type = STMT_LET;
+    let_stmt->let_stmt.ident = cur->value.string_value;
+    let_stmt->let_stmt.type.inferred = true;
+    cur = get_next();
+    if (cur->type == TOKEN_COLON) {
+        advance();
+        bool ok = parse_type_inline(&let_stmt->let_stmt.type, true); 
+        if (!ok) {
+            make_error_h("Expected a type here", get_previous()->span, "Remove this ':' or provide a type after it", cur->span); 
+        } 
+        cur = get_cur();    
+    }
+
+    let_stmt->let_stmt.initializer = null;
+    if (cur->type == TOKEN_ASSIGN) {
+        advance();
+        let_stmt->let_stmt.initializer = parse_expr(); 
+        expect_semicolon();
+    } else { 
+        expect(TOKEN_SEMICOLON, "Expected initalizer ('=') or ';' in let statement"); 
+    };
+    
+    let_stmt->loc = let->span;
+    return let_stmt;
+}
+
+stmt_t* parse_for(void)
+{
+    token_t* f = get_cur(); advance();
+    
+    return null;
+}
+
+stmt_t* parse_while(void)
+{
+    token_t* w = get_cur(); advance();
+    expr_t* cond = parse_expr();
+    if (!expect(TOKEN_LBRACE, "Expected block after while statement")) {
+        recover_until_next_semicolon();
+        return null;
+    }
+    
+    return null;
+}
+
+stmt_t* parse_return(bool is_yield)
+{
+    token_t* ret = get_cur(); advance();
+    expr_t* value = parse_expr();
+    expect_semicolon();
+    stmt_t* return_stmt = arena_alloc(&arena, sizeof(stmt_t));
+    return_stmt->type = is_yield ? STMT_YIELD : STMT_RETURN;
+    return_stmt->expr = value;
+    return_stmt->loc = ret->span;
+    return return_stmt;
+}
+
+stmt_t* parse_const_decl(token_t* ident)
+{
+    stmt_t* const_decl_stmt = arena_alloc(&arena, sizeof(stmt_t));
+    const_decl_stmt->type = STMT_LET;
+    const_decl_stmt->loc = ident->span;
+    const_decl_stmt->let_stmt.is_const = true;
+    const_decl_stmt->let_stmt.ident = ident->value.string_value;
+
+    token_t* cur = get_next();
+    if (cur->type == TOKEN_COLON) {
+        // no type provided
+        const_decl_stmt->let_stmt.type.inferred = true;
+        cur = get_next();
+    } else {
+        parse_type_inline(&const_decl_stmt->let_stmt.type, false);
+        expect(TOKEN_COLON, "Expected ':' after type in constant var declaration");
+    }
+
+    const_decl_stmt->let_stmt.initializer = parse_expr();
+    return const_decl_stmt;
+}
+
+stmt_t* parse_assign(token_t* ident)
+{
+    advance();
+    stmt_t* assign_stmt = arena_alloc(&arena, sizeof(stmt_t));
+    assign_stmt->type = STMT_ASSIGN;
+    assign_stmt->assign_stmt.ident = ident->value.string_value;
+    assign_stmt->assign_stmt.value = parse_expr();
+    assign_stmt->loc = ident->span;
+    return assign_stmt;
+}
+
+stmt_t* parse_stmt(void) 
+{
+    token_t* keyword = get_cur();
+    if (keyword->type == TOKEN_LET) {
+        return parse_let();
+    } else if (keyword->type == TOKEN_FOR) {
+        return parse_for();
+    } else if (keyword->type == TOKEN_WHILE) {
+        return parse_while();
+    } else if (keyword->type == TOKEN_RETURN) {
+        return parse_return(false);
+    } else if (keyword->type == TOKEN_YIELD) {
+        return parse_return(true);
+    } else if (keyword->type == TOKEN_IDENT) {
+        token_t* next = get_next(); 
+        if (next->type == TOKEN_COLON) {
+            return parse_const_decl(keyword);
+        } else if (next->type == TOKEN_ASSIGN) {
+            return parse_assign(keyword);
+        } else {
+            make_error("Expected either ('=') or ('::') after identifier", next->span); recover_until_next_semicolon(); return null;
+        }
+    } else if (keyword->type == TOKEN_EOF) {
+        log_fatal("EOF REACHED!"); return null;
+    } else {
+        expr_t* expr = parse_expr();
+        stmt_t* result = arena_alloc(&arena, sizeof(stmt_t));
+        result->type = STMT_EXPR; result->expr = expr;
+        return result;
+    }
+}
+
 fn_t* parse_fn(token_t* ident)
 {
     token_t* lparen = get_next();
     if (lparen->type != TOKEN_LPAREN) {
         make_error("Expected argument list after function keyword", get_previous()->span);
-        recover_until_next_semicolon(); return null;
+        recover_until_next_rbrace(); return null;
     }
     token_t* next = null;
-    fn_t* fn; fn->args_count = 0;
-    fn->args = arena.first->cur;
-    do {
-        token_t* ident = get_next();
-        if (ident->type != TOKEN_IDENT) {
-            make_error("Expected identifier", ident->span); recover_until_next_semicolon(); return null;
+    fn_t* fn = arena_alloc(&arena, sizeof(fn_t));
+    fn->args = array_init(sizeof(field_t));
+    fn->name = ident->value.string_value;
+    fn->loc = ident->span;
+    
+    if (peek()->type != TOKEN_RPAREN) {
+        // parse arguments
+        do {
+            token_t* ident = get_next();
+            if (ident->type != TOKEN_IDENT) {
+                make_error("Expected identifier", ident->span); recover_until_next_rbrace(); return null;
+            }
+            token_t* colon = get_next();
+            if (colon->type != TOKEN_COLON) {
+                make_error("Expected ':' after argument identifier", colon->span); recover_until_next_rbrace(); return null;
+            }
+
+            field_t* arg = array_append(&fn->args); 
+            arg->name = ident->value.string_value;
+            parse_type_inline(&arg->type, false);
+            
+            next = get_next();
+        } while (next->type == TOKEN_COMMA);
+        if (next->type != TOKEN_RPAREN) {
+            make_error_h("No matching closing parenthesis", lparen->span, "Insert ')' here", next->span);
+            recover_until_next_semicolon(); return null;
         }
-        token_t* colon = get_next();
-        if (colon->type != TOKEN_COLON) {
-            make_error("Expected ':' after argument identifier", colon->span); recover_until_next_semicolon(); return null;
+    } else { advance(); } 
+
+    next = get_next();
+    fn->body = array_init(sizeof(stmt_t*));
+    if (next->type == TOKEN_ARROW) {
+        // parse return type
+        advance();
+        parse_type_inline(&fn->return_type, false);
+        next = get_cur();
+    } 
+
+    if (next->type == TOKEN_SEMICOLON) {
+        advance();
+        return fn;
+    } 
+       
+    if (next->type != TOKEN_LBRACE) {
+        make_error("Expected block or semicolon following function declaration", next->span);
+        recover_until_next_semicolon(); return fn;
+    }
+    next = get_next();
+    while (next->type != TOKEN_RBRACE) {
+        if (next->type == TOKEN_EOF) {
+            make_error("Missing } after function body", next->span); goto end;
         }
-        token_t* type = get_next();
-        if (type->type != TOKEN_IDENT) {
-            make_error("Expected a type for the argument", type->span); recover_until_next_semicolon(); return null;
-        }
-        fn->args_count++; 
-        field_t* arg = arena_alloc(&arena, sizeof(field_t));
-        // TODO: types
-        token_t* next = get_next();
-    } while (next->type == TOKEN_COMMA);
+        stmt_t** stmt_slot = array_append(&fn->body);
+        *stmt_slot = parse_stmt();
+        next = get_cur();
+    }
+    advance();
+end:
+    return fn;
 }
 
 void parse_const_var_decl(token_t* ident)
@@ -562,6 +1053,12 @@ void parse_const_var_decl(token_t* ident)
     token_t* next = get_next();
     if (next->type == TOKEN_FN) {
         fn_t* fn = parse_fn(ident);
+        if (fn == null) return;
+        if (map_gets(&parser.ast->fns, fn->name) != null) {
+            make_error("Function with this name already exists", fn->loc);
+            return;
+        } 
+        map_sets(&parser.ast->fns, fn->name, fn);
     } else if (next->type == TOKEN_STRUCT) {
         //return parse_struct(ident);
         log_fatal("parsing STRUCT is not implemented yet");
@@ -577,7 +1074,6 @@ void parse_const_var_decl(token_t* ident)
     } else {
         // identifier is a constant variable
         expr_t* expr = parse_expr();
-        parser.ast->test = expr;
         expect_semicolon();
     }
 }
@@ -593,11 +1089,26 @@ void parse_toplevel_statement(void)
     token_t* next = get_next();
     if (next->type == TOKEN_IMPL) {
         return parse_impl(ident);
-    } else if (next->type == TOKEN_DCOLON) { 
+    } else if (next->type == TOKEN_COLON && peek()->type == TOKEN_COLON) { 
+        advance();
         return parse_const_var_decl(ident); 
     }
     make_error("Expected '::' or 'impl' after identifier in global scope", next->span);
     recover_until_newline();
+}
+
+void register_basic_types(void)
+{
+#define basic_type(ident)   type_t (ident) = {0}; \
+                            map_set(&types, #ident, 0, &(ident));
+    basic_type(i64)
+    basic_type(i32)
+    basic_type(i16)
+    basic_type(i8)
+    basic_type(u64)
+    basic_type(u32)
+    basic_type(u16)
+    basic_type(u8)
 }
 
 ast_t* parser_parse_tokens(token_t* tokens, uint32_t token_count)
@@ -616,6 +1127,9 @@ ast_t* parser_parse_tokens(token_t* tokens, uint32_t token_count)
     token_t* package_ident = get_cur();
     ok = expect(TOKEN_IDENT, "Expected identifier after package definition");
     if (!ok) return parser.ast;
+
+    types = (map_t){0};
+    register_basic_types();
 
     while (true) {
         token_t* tok = get_cur();
