@@ -1,0 +1,15 @@
+package main
+
+main :: fn(args: []str) => i32 
+{
+    let test = if 34 + 35 == 69 {
+        yield true;
+    } else {
+        yield false;
+    };
+    return if test == true {
+        yield 35;
+    } else if false {
+        yield 34;
+    } else { yield 69; };
+}

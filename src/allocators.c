@@ -11,12 +11,15 @@ static u64 alloc_counter = 0;
 
 void* arena_alloc(arena_t* a, u32 size)
 {
-    //log_debug("arena_alloc");
+//    log_debug("arena_alloc with size %u", size);
+    alloc_counter++;
     arena_body* bucket = a->buckets[a->bucket_count-1];
     void* new_cur = INC_PTR(bucket->cur, size);
     if ((u64)new_cur - (u64)bucket - 24 >= ARENA_SIZE) {
-        log_debug("%lu: New bucket after %u bytes", ++alloc_counter, (u64)bucket->cur - (u64)bucket - 24);
         // allocation too big, make new bucket
+        log_debug("%lu: New bucket after %u bytes and %d allocs", alloc_counter, (u64)bucket->cur - (u64)bucket - 24, alloc_counter);
+        alloc_counter = 0;
+
         a->bucket_count++; HeapReAlloc(a->heap, HEAP_ZERO_MEMORY, a->buckets, a->bucket_count * sizeof(arena_body*));
         if (a->buckets == null) {
             log_fatal("Failed to realloc bucket ptr array!"); exit(-1);
@@ -25,6 +28,7 @@ void* arena_alloc(arena_t* a, u32 size)
         if (body == null) {
             log_fatal("Failed to allocate new body!: %lu", GetLastError()); exit(-1);
         }
+
         body->cur = ARENA_DATA(body); body->last_alloc_size = 0; body->last = null;
         a->buckets[a->bucket_count-1] = body;
         new_cur = INC_PTR(bucket->cur, size);
@@ -59,7 +63,7 @@ void arena_end_section(arena_t* arena)
     arena_section* prev = bucket->last->prev;
     ASAN_POISON_MEMORY_REGION(bucket->last, (u64)bucket->cur - (u64)bucket->last);
     bucket->last = prev;
-    bucket->cur = bucket->last; // free memory up until the section
+    if (bucket->last) bucket->cur = bucket->last; // free memory up until the section
 }
 
 void* arena_get_cur(arena_t* arena)

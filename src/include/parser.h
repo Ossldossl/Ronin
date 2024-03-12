@@ -52,6 +52,8 @@ typedef enum {
 } expr_type_e;
 
 typedef enum {
+    POST_TRUE,
+    POST_FALSE,
     POST_INT,
     POST_FLOAT,
     POST_STR,
@@ -81,6 +83,8 @@ const char* post_op_kind_strings[] = {
 
 #ifdef STRINGS_IMPLEMENTATION
 const char* post_val_kind_strings[] = {
+    "POST_TRUE",
+    "POST_FALSE",
     "POST_INT",
     "POST_FLOAT",
     "POST_STR",
@@ -191,7 +195,6 @@ typedef struct {
 
 typedef struct {
     array_t stmts;
-    type_ref_t yields;
 } block_expr_t;
 
 typedef struct arms_t {
@@ -206,8 +209,8 @@ typedef struct {
 
 typedef struct {
     expr_t* condition;
-    expr_t* body;
-    expr_t* alternative;
+    stmt_t* body;
+    stmt_t* alternative;
 } if_expr_t;
 
 struct expr_t {

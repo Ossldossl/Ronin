@@ -247,7 +247,7 @@ u8 u16 u32 u64 u128
 f16 f32 f64
 
 // strings
-Str Cstr
+str cstr
 
 bool
 ```

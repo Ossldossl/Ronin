@@ -26,6 +26,9 @@ extern array_t errors;
 parser_t parser;
 map_t types;
 
+stmt_t* parse_stmt(void);
+expr_t* parse_expr(void);
+
 static void print_indent(int indent)
 {
     for (int i = 0; i < indent*4; i++) {
@@ -47,6 +50,8 @@ static void print_post_value(int indent, post_expr_t* post)
     } else if (post->val_kind == POST_IDENT) {
         printf("- ident: %s\n", str_to_cstr(&post->value.string_value));
         arena_free_last(&arena);
+    } else if (post->val_kind == POST_TRUE || post->val_kind == POST_FALSE) {
+        printf("\r");
     }
 }
 
@@ -137,8 +142,8 @@ static void print_expr(int indent, expr_t* expr)
             printf("- Block Expression:\n");
             indent++;
             for_to(i, expr->block.stmts.used) {
-                stmt_t* stmt = array_get(&expr->block.stmts, i);
-                print_statement(indent+1, stmt);
+                stmt_t** stmt = array_get(&expr->block.stmts, i);
+                print_statement(indent+1, *stmt);
             } 
         } break;
         case (EXPR_MATCH): {
@@ -171,13 +176,15 @@ static void print_expr(int indent, expr_t* expr)
                 ++indent;
                     print_expr(indent, expr->if_expr.condition);
                 --indent;
+                print_indent(indent);
                 printf("- body:\n");
                 ++indent;
-                    print_expr(indent, expr->if_expr.body);
+                    print_statement(indent, expr->if_expr.body);
                 --indent;
+                print_indent(indent);
                 printf("- alternative:\n");
                 ++indent;
-                    print_expr(indent, expr->if_expr.alternative);
+                    print_statement(indent, expr->if_expr.alternative);
                 --indent;
         } break;
     }
@@ -370,11 +377,11 @@ bool expect(token_type_e expected_type, char* error_msg)
     advance(); return true;
 }
 
-bool expect_semicolon(void)
+bool expect_semicolon(token_t* belongs_to)
 {
     token_t* tok = get_cur();
     if (tok->type != TOKEN_SEMICOLON) {
-        make_error("Missing semicolon", tok->span);
+        make_error_h("Missing semicolon after this token", get_previous()->span, "The missing semicolon belongs to this token", belongs_to->span);
         return false;
     }
     advance(); return true;
@@ -499,7 +506,8 @@ void parse_import(void)
     *new_path = result;
 } 
 
-expr_t* parse_expr(void);
+
+//#region
 
 expr_t* parse_post_ident(expr_t* lhs)
 {
@@ -573,6 +581,12 @@ expr_t* parse_post(void)
         else if (op->type == TOKEN_DEC) { kind = POST_DEC; advance(); }
         return make_post_expr(&val->value, val->type == TOKEN_INT_LIT ? POST_INT : POST_FLOAT, kind, LOC(val->span.line, val->span.col, kind == POST_NONE ? val->span.len : val->span.col + val->span.len + 2));
     } 
+    else if (val->type == TOKEN_TRUE) {
+        return make_post_expr(&val->value, POST_TRUE, POST_NONE, val->span);
+    } 
+    else if (val->type == TOKEN_FALSE) {
+        return make_post_expr(&val->value, POST_FALSE, POST_NONE, val->span);
+    }
     else if (val->type == TOKEN_STR_LIT) {
         if (op->type == TOKEN_LBRACKET) {
             advance();
@@ -760,11 +774,71 @@ expr_t* parse_or(void)
     return lhs;
 }
 
+//#endregion
+
+expr_t* parse_if(void)
+{
+    token_t* cur = get_next();
+    expr_t* result = arena_alloc(&arena, sizeof(expr_t));
+    result->kind = EXPR_IF;
+    result->if_expr.condition = parse_expr();
+    result->if_expr.body = parse_stmt();
+    
+    cur = get_cur();
+    if (cur->type == TOKEN_ELSE) {
+        cur = get_next();
+        if (cur->type != TOKEN_IF) {
+            if (!expect(TOKEN_LBRACE, "Expected either 'if' or a block expression after 'else'")) {
+                result->if_expr.alternative = null; 
+                recover_until_next_semicolon();
+                return result;
+            } 
+            retreat();
+        }
+        result->if_expr.alternative = parse_stmt(); 
+    }
+    return result;
+}
+
+expr_t* parse_match(void)
+{
+    return null;
+}
+
 expr_t* parse_expr(void)
 {
-    expr_t* result = parse_or();
-    // TODO: match etc.
-    return result;
+    token_t* cur = get_cur();
+    if (cur->type == TOKEN_IF) {
+        return parse_if();
+    }
+    else if (cur->type == TOKEN_MATCH) {
+        return parse_match();
+    }
+    else if (cur->type == TOKEN_TRUE) {
+        advance();
+        return make_post_expr(&cur->value, POST_TRUE, POST_NONE, cur->span);
+    } 
+    else if (cur->type == TOKEN_FALSE) {
+        advance();
+        return make_post_expr(&cur->value, POST_FALSE, POST_NONE, cur->span);
+    } else if (cur->type == TOKEN_LBRACE) {
+        expr_t* result = arena_alloc(&arena, sizeof(expr_t));
+        result->kind = EXPR_BLOCK;
+        result->loc = cur->span;
+        result->block.stmts = array_init(sizeof(stmt_t*));
+        cur = get_next(); 
+        while (cur->type != TOKEN_RBRACE) {
+            if (cur->type == TOKEN_EOF) {
+                make_error("Missing closing bracket ('}') after block expression", cur->span); break;
+            }
+            stmt_t** stmt_slot = array_append(&result->block.stmts);
+            *stmt_slot = parse_stmt();
+            cur = get_cur();
+        }
+        advance();
+        return result;
+    }
+    return parse_or();
 }
 
 type_ref_t* parse_type(void)
@@ -873,7 +947,7 @@ stmt_t* parse_let(void)
     if (cur->type == TOKEN_ASSIGN) {
         advance();
         let_stmt->let_stmt.initializer = parse_expr(); 
-        expect_semicolon();
+        expect_semicolon(let);
     } else { 
         expect(TOKEN_SEMICOLON, "Expected initalizer ('=') or ';' in let statement"); 
     };
@@ -905,7 +979,7 @@ stmt_t* parse_return(bool is_yield)
 {
     token_t* ret = get_cur(); advance();
     expr_t* value = parse_expr();
-    expect_semicolon();
+    expect_semicolon(ret);
     stmt_t* return_stmt = arena_alloc(&arena, sizeof(stmt_t));
     return_stmt->type = is_yield ? STMT_YIELD : STMT_RETURN;
     return_stmt->expr = value;
@@ -1003,11 +1077,12 @@ fn_t* parse_fn(token_t* ident)
                 make_error("Expected ':' after argument identifier", colon->span); recover_until_next_rbrace(); return null;
             }
 
+            advance();
             field_t* arg = array_append(&fn->args); 
             arg->name = ident->value.string_value;
             parse_type_inline(&arg->type, false);
             
-            next = get_next();
+            next = get_cur();
         } while (next->type == TOKEN_COMMA);
         if (next->type != TOKEN_RPAREN) {
             make_error_h("No matching closing parenthesis", lparen->span, "Insert ')' here", next->span);
@@ -1074,7 +1149,7 @@ void parse_const_var_decl(token_t* ident)
     } else {
         // identifier is a constant variable
         expr_t* expr = parse_expr();
-        expect_semicolon();
+        expect_semicolon(next);
     }
 }
 

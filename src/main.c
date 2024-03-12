@@ -198,6 +198,13 @@ void print_errors(char* file_content, int file_size)
                 print_err_msg(true, e->hint_loc, e->hint);
             }
             printf("\n");
+        } else {
+            print_code_line(file_content, e->error_loc.line);
+            print_err_msg(false, e->error_loc, e->error);
+            printf("\n");
+            print_code_line(file_content, e->hint_loc.line);
+            print_err_msg(true, e->hint_loc, e->hint);
+            printf("\n");
         }
     }
     return;
