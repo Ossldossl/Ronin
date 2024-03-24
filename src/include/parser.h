@@ -12,15 +12,16 @@ typedef struct trait_t trait_t;
 typedef struct field_t field_t;
 
 struct trait_t{
-    array_t* fns;
+    array_t fns;
 };
 
 // first, type_t* in fns points to a str_t with the identifier of the expected type
 // later in type resolution type_t* actually begins to point to a valid type from the map
 struct type_t {
+    span_t loc;
     array_t traits;
     array_t fields;
-    span_t loc;
+    u32 size_of_type;
 };
 
 struct type_ref_t {
@@ -292,9 +293,51 @@ typedef struct {
 } fn_t;
 
 typedef struct {
-    array_t import_paths; // todo
+    str_t name;
+    field_t fields;
+} struct_t;
+
+typedef struct {
+    str_t name;
+    map_t cases;
+    u16 case_count;
+} enum_t;
+
+typedef struct {
+    str_t name;
+    array_t members;
+    u32 size;
+} union_t;
+
+typedef struct {
+    enum {
+        SYMBOL_ENUM,
+        SYMBOL_STRUCT,
+        SYMBOL_UNION,
+    } kind;
+    union {
+        struct_t _struct;
+        union_t _union;
+        enum_t _enum;
+    };
+} symbol_t;
+
+typedef struct {
+    str_t ident;
+    char* file_path;
+    u8 file_id;
+} import_t;
+
+typedef struct {
+    map_t symbols;
     map_t fns;
-} ast_t;
+    str_t ident;
+    map_t imports; // map_t of file_t
+    struct {
+        u16 index; u8 len;   
+    } imported_files_slice;
+} file_t;
     
-ast_t* parser_parse_tokens(token_t* tokens, uint32_t token_count);
-void parser_debug(ast_t* ast);
+void parser_init();
+file_t parser_parse();
+void parser_debug(file_t* ast);

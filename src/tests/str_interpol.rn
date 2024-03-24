@@ -1,5 +1,3 @@
-package main
-
 main :: fn(args: []str) => i32 
 {
     let name = "peter";

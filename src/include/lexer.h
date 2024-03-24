@@ -17,11 +17,13 @@ typedef struct token_t {
     token_value_u value;
 } token_t;
 
+void lexer_init(char* file_content, size_t file_size, uint8_t file_id);
 uint32_t lexer_tokenize(char* file_content, size_t file_size, uint8_t file_id);
+token_t* lexer_tokenize_single(void);
 void lexer_debug(token_t* start, uint32_t token_count);
 
 enum token_type_e {
-    TOKEN_ERR,
+    TOKEN_ERR = 0,
     TOKEN_INT_LIT,
     TOKEN_FLOAT_LIT,
     TOKEN_STR_LIT,
@@ -95,7 +97,6 @@ enum token_type_e {
     TOKEN_IMPORT,
     TOKEN_LET,
     TOKEN_MATCH,
-    TOKEN_PACKAGE,
     TOKEN_RETURN,
     TOKEN_SELFVAL,      // self
     TOKEN_STRUCT,
@@ -109,6 +110,7 @@ enum token_type_e {
     TOKEN_EOF,
 };
 
+extern const char* token_type_strings[];
 #ifdef TOKEN_STRINGS_IMPLEMENTATION
 const char* token_type_strings[] = {
     "TOKEN_ERR",
@@ -160,7 +162,7 @@ const char* token_type_strings[] = {
     "TOKEN_LAND",         // &&
 
     "TOKEN_PERIOD",       // .
-    "TOKEN_COMMA",        "// ",
+    "TOKEN_COMMA",        // ,
     "TOKEN_SEMICOLON",    // ;
     "TOKEN_COLON",        // :
 
@@ -169,7 +171,6 @@ const char* token_type_strings[] = {
     "TOKEN_QUEST",
     "TOKEN_DQUEST",
 
-    // keywords
     "TOKEN_AS",
     "TOKEN_BREAK",
     "TOKEN_CONTINUE",
@@ -185,7 +186,6 @@ const char* token_type_strings[] = {
     "TOKEN_IMPORT",
     "TOKEN_LET",
     "TOKEN_MATCH",
-    "TOKEN_PACKAGE",
     "TOKEN_RETURN",
     "TOKEN_SELFVAL",      // self
     "TOKEN_STRUCT",

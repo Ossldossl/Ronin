@@ -195,6 +195,7 @@ map_t* map_next(map_t* cur)
 map_t* map_get_at(map_t* root, uint32_t index)
 {
     // first find the first node
+    if (root->value == 0) return null; // when root is empty we have no entries
     map_t* cur = root;
     while (cur->left) {
         cur = cur->left;

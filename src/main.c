@@ -9,6 +9,7 @@
 #include "include/allocators.h"
 #include "include/array.h"
 #include "include/map.h"
+#include "include/file.h"
 
 #include "include/lexer.h"
 #include "include/parser.h"
@@ -48,53 +49,6 @@ void print_usage(void)
     printf("    --print-ast: Prints the ast of the first file\n");
     console_reset();
     return;
-}
-
-HANDLE get_file_handle(const char* file_name, bool write) 
-{
-	HANDLE hFile;
-	hFile = CreateFile(file_name,
-		write ? GENERIC_WRITE : GENERIC_READ,
-		write ? 0 : FILE_SHARE_READ,
-		null,
-		write ? CREATE_ALWAYS : OPEN_EXISTING,
-		FILE_ATTRIBUTE_NORMAL ,
-		null);
-
-    if (hFile == INVALID_HANDLE_VALUE) 
-    {
-        DWORD err = GetLastError();
-        if (err == 2) {
-            log_fatal("Datei %s wurde nicht gefunden", file_name);
-            exit(-1);
-        } 
-        log_fatal("Fehler beim Öffnen der Datei, %lu", err);
-        exit(-1);
-    }
-
-    return hFile;
-}
-
-size_t open_file(const char* file_name, char** file_content)
-{
-    HANDLE hFile = get_file_handle(file_name, false);
-    LARGE_INTEGER file_size_li;
-    if (GetFileSizeEx(hFile, &file_size_li) == 0) {
-        log_fatal("Fehler beim Abfragen der Größe der Datei, %lu", GetLastError());
-        exit(-2);
-    }
-    size_t file_size = file_size_li.QuadPart;
-
-    char* buf = arena_alloc(&arena, file_size+1);
-    DWORD read = 0;
-    if (ReadFile(hFile, buf, file_size, &read, null) == 0 || read == 0) {
-        log_fatal("ERROR: Fehler beim Lesen der Datei, %lu", GetLastError());
-        exit(-2);
-    }
-    CloseHandle(hFile);
-    buf[file_size] = '\0';
-    *file_content = buf;
-    return file_size;
 }
 
 char* get_line(char* file_content, int line)
@@ -210,6 +164,32 @@ void print_errors(char* file_content, int file_size)
     return;
 }
 
+void parse_imported_files(import_t* mod, map_t* owner)
+{
+    // set cd
+    str_t dir = get_dir_name(mod->file_path);
+    SetCurrentDirectoryA(str_to_cstr(&dir));
+    // read file
+    char* file_content;
+    u64 file_size = read_file(mod->file_path, &file_content);
+
+    // init lexer
+    lexer_init(file_content, file_size, mod->file_id);
+
+    // parse file
+    file_t f = parser_parse();
+    f.ident = mod->ident;
+
+    for (int i = f.imported_files_slice.index; i < f.imported_files_slice.index+f.imported_files_slice.len; i++) {
+        import_t* import = array_get(&file_names, i);
+        parse_imported_files(import, &f.imports);
+    }
+
+    file_t* heap_f = arena_alloc(&arena, sizeof(file_t));
+    memcpy_s(heap_f, sizeof(file_t), &f, sizeof(file_t));
+    map_sets(owner, mod->ident, heap_f);
+}
+
 int main(int argc, char** argv)
 {
     init_console();
@@ -243,36 +223,42 @@ int main(int argc, char** argv)
     
     char* file_name = argv[i-1];
     char* file_content;
-    int file_size = open_file(file_name, &file_content);
+    int file_size = read_file(file_name, &file_content);
 
     errors = array_init(sizeof(error_t));
-    file_names = array_init(sizeof(char*));
-    char** slot = array_append(&file_names);
-    *slot = file_name; 
+    file_names = array_init(sizeof(import_t));
+    import_t* slot = array_append(&file_names);
+    slot->file_path = file_name; slot->ident = file_get_ident(file_name, strlen(file_name));
 
     LARGE_INTEGER end_init;
     QueryPerformanceCounter(&end_init);
     
-    // generate tokens
-    token_t* start = arena.buckets[0]->cur;
-    uint32_t token_count = lexer_tokenize(file_content, file_size, 0); // 0 => file_id
-    if (print_tokens) lexer_debug(start, token_count);
+    str_t dir = get_dir_name(file_name);
+    bool ok = SetCurrentDirectoryA(str_to_cstr(&dir));
+    arena_free_last(&arena);
+    lexer_init(file_content, file_size, 0);
+    parser_init();
 
-    LARGE_INTEGER end_lex;
-    QueryPerformanceCounter(&end_lex);
+    // parse file
+    file_t ast = parser_parse();
+    ast.ident = slot->ident;
 
-    // parse tokens
-    ast_t* ast = parser_parse_tokens(start, token_count);
+    for (int i = ast.imported_files_slice.index; i < ast.imported_files_slice.index+ast.imported_files_slice.len; i++) {
+        import_t* import = array_get(&file_names, i);
+        parse_imported_files(import, &ast.imports);
+    }
+
     LARGE_INTEGER end_parse;
     QueryPerformanceCounter(&end_parse);
-    if (print_ast)    parser_debug(ast);
+    if (print_ast)  parser_debug(&ast);
     if (array_len(&errors) > 0) {
         print_errors(file_content, file_size);
         goto compiler_end;
     }
     
-    // resolve types and functions
+    // resolve types and functions &&
     // check types
+
     // generate ir
     // optimize
     // register allocation && asm generation
@@ -284,9 +270,7 @@ compiler_end:
     all /= freq;
     double init = (end_init.QuadPart - start_time.QuadPart) * 1000.f;
     init /= freq;
-    double lex = (end_lex.QuadPart - end_init.QuadPart) * 1000.f;
-    lex /= freq;
-    double parse = (end_parse.QuadPart - end_lex.QuadPart) * 1000.f;
+    double parse = (end_parse.QuadPart - end_init.QuadPart) * 1000.f;
     parse /= freq;
-    log_info("Compilation took %3.3lfms (init: %3.3lfms, lex: %3.3lfms, parse: %3.3lfms)", all, init, lex, parse);
+    log_info("Compilation took %3.3lfms (init: %3.3lfms, parse: %3.3lfms)", all, init, parse);
 }

@@ -1,14 +1,14 @@
-package main
-
 main :: fn(args: []str) => i32 
 {
     for arg in args {
         print(arg);
     }
+    
     {
         let in_scope = 21;
         print("hello, inscope{21}");
     }
+
     for let i = 0; i <= len(args); i += 1; {
         print(arg);
         arg += 1;

@@ -1,4 +1,44 @@
 # The Ronin Programming Language
+
+## Imports
+Auf ein Import-Statement folgt ein Dateipfad, z.B.:
+```
+import "io/fmt.rn";
+
+main :: fn(args: []str) => i32 
+{
+	fmt.println("Hello, World!");
+//  ^^^ Richtet sich nach Dateiname
+	return 0;
+}
+```
+Den Namen kann man mit einem "as" nach dem Pfad ändern. Ist der angegebene Name ein '_', werden die Inhalte der importieren Datei in den Scope der importierenden Datei geholt.
+
+```
+import "io/fmt.rn" as _;
+import "vendor/sdl2.rn" as sdl;
+
+main :: fn() => i32 {
+	println("We don't need to write 'fmt.println' here!");
+	sdl.create_window(800, 600, "Test Window");
+//  ^^^ sdl2 renamed to sdl
+}
+```
+Wenn anstatt ein Dateipfad ein Pfad zu einem Order angegeben wird, so wird die Datei lib.rn in diesem Ordner importiert, z.B.:
+```/io
+	/fmt
+		/print.rn
+		/lib.rn // lib.rn imports print.rn
+	/...
+```
+```
+import "io/fmt"
+
+main :: fn() => i32 {
+	fmt.print.println("Hello, World!");
+}
+```
+
 ``` 
 CONST_VAL :: 123
 

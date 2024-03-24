@@ -1,0 +1,17 @@
+
+fibt :: fn(n: u32, prev: u32, cur: u32) => u32 
+{
+    if (n == 0) {
+        return prev;
+    }
+    if (n == 1) {
+        return cur;
+    }
+
+    return fibt(n-1, cur, prev+cur);
+}
+
+main :: fn(args: []str) => i32 
+{
+    fib(35);
+}

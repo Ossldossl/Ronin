@@ -9,25 +9,39 @@
 #include "include/map.h"
 #include "include/console.h"
 #include "include/parser.h"
+#include "include/file.h"
 
-#define LOC(l, c, le) (span_t) {.line = (l), .col = (c), .len = (le), .file_id=(parser.cur_file_id)}
+#define LOC(l, c, le) (span_t) {.line = (l), .col = (c), .len = (le), .file_id=(parser.file_id)}
 
 typedef struct {
-    token_t* tokens;
-    uint32_t token_count;
-    uint32_t index;
-    uint8_t cur_file_id;
-    ast_t* ast;
+    token_t* prev; 
+    token_t* cur; 
+    token_t* next;
+    bool eof;
+    u8 file_id;
+    file_t ast;
 } parser_t;
 
 extern arena_t arena;
 extern array_t errors;
+extern array_t file_names;
 
 parser_t parser;
-map_t types;
 
 stmt_t* parse_stmt(void);
 expr_t* parse_expr(void);
+
+
+//#region builtin_types
+type_t* builtin_i64 = null;
+type_t* builtin_i32 = null;
+type_t* builtin_i16 = null;
+type_t* builtin_i8 = null;
+type_t* builtin_u64 = null;
+type_t* builtin_u32 = null;
+type_t* builtin_u16 = null;
+type_t* builtin_u8 = null;
+//#endregion
 
 static void print_indent(int indent)
 {
@@ -322,56 +336,75 @@ void print_fn(fn_t* fn)
     printf("ENDFUNCTION %s\n\n", str_to_cstr(&fn->name));
 }
 
-void parser_debug(ast_t* ast)
+void parser_debug_file(file_t* ast)
 {
-    arena_begin_section(&arena);
-    // iterate over all functions in current file
     map_t* cur = map_get_at(&ast->fns, 0); 
     if (cur == null) {
-        log_fatal("No functions in file!"); exit(-4);
+        log_fatal("No functions in file!"); return;
     }
     do {
         fn_t* fn = cur->value;
         if (fn == null) { log_fatal("fn_t in map should never be null!"); return; }
         print_fn(fn);
     } while ((cur = map_next(cur)));
+}
+
+void parser_debug(file_t* ast)
+{
+    arena_begin_section(&arena);
+    // iterate over all functions in current file
+
+    printf("MODULE %s\n", str_to_cstr(&ast->ident));
+    arena_free_last(&arena);
+    parser_debug_file(ast);
+    printf("ENDMODULE\n");
+
+    map_t* cur_mod = map_get_at(&ast->imports, 0);
+    if (cur_mod == null) return;
+    do {
+        file_t* f = cur_mod->value;
+        printf("\nMODULE %s\n", str_to_cstr(&f->ident));
+        arena_free_last(&arena);
+        parser_debug_file(f);
+        printf("ENDMODULE\n");
+    } while ((cur_mod = map_next(cur_mod)) != null);
     arena_end_section(&arena);
-}
-
-inline static token_t* get_next(void) 
-{
-    parser.index++;
-    if (parser.index >= parser.token_count) {
-        return &parser.tokens[parser.token_count-1];
-    }
-    return &parser.tokens[parser.index];
-}
-
-inline static token_t* get_previous(void)
-{
-    return &parser.tokens[parser.index-1];
-}
-
-inline static token_t* get_cur(void) 
-{
-    if (parser.index >= parser.token_count) return &parser.tokens[parser.token_count-1];
-    return &parser.tokens[parser.index];
-}
-
-inline static token_t* peek(void)
-{
-    if (parser.index >= parser.token_count) return &parser.tokens[parser.token_count-1];
-    return &parser.tokens[parser.index+1];
 }
 
 inline static void advance(void) 
 {
-    parser.index++;
+    parser.prev = parser.cur;
+    parser.cur = parser.next;
+    if (parser.cur->type != TOKEN_EOF) {
+        parser.next = lexer_tokenize_single();
+    } else parser.eof = true;
+}
+
+inline static token_t* get_next(void) 
+{
+    advance();
+    return parser.cur;
+}
+
+inline static token_t* get_previous(void)
+{
+    return parser.prev;
+}
+inline static token_t* get_cur(void) 
+{
+    return parser.cur;
+}
+
+inline static token_t* peek(void)
+{
+    return parser.next;
 }
 
 inline static void retreat(void) 
 {
-    parser.index--;
+    parser.next = parser.cur;
+    parser.cur = parser.prev;
+    parser.prev = null;
 }
 
 inline static bool match(token_type_e type)
@@ -493,37 +526,63 @@ expr_t* make_post_lhs(post_op_kind_e op_kind, expr_t* lhs, span_t loc)
     return result;
 }
 
-void parse_import(void)
+// todo: add support for importing libraries (directories)
+void parse_import(str_t* _ident)
 {
-    // TODO: REDO IMPORT 
     token_t* import = get_cur();
-    token_t* ident = get_next();
-    if (ident->type != TOKEN_IDENT) {
-        if (ident->type == TOKEN_STR_LIT) {
-            make_error_h("Expected Identifier after import statement", ident->span, "Remove these quotes", LOC(ident->span.line, ident->span.col-1, 1));
+    token_t* path = get_next();
+    advance();
+    if (path->type != TOKEN_STR_LIT) {
+        make_error("Expected file path after import statement!", path->span);
+        return;
+    }
+    str_t ident; ident.data = null;
+    u32 path_len;
+    char* abs_path = path_to_absolute(str_to_cstr(&path->value.string_value), path->value.string_value.len, &path_len); 
+    if (!file_exists(abs_path)) {
+        str_t ending = str_get_last_n(&path->value.string_value, 4);
+        if (!str_cmp_c(&ending, ".rn")) {
+            // maybe supplied a directory
+            char* new_ending = arena_alloc(&arena, 7);
+            // overwrite the previous null byte
+            memcpy_s(new_ending, 8, "\\lib.rn", 8);
+            path_len+=8;
+            if (file_exists(abs_path)) {
+                // find identifier for directory import
+                ident = file_get_ident(abs_path, path_len);
+                goto compiler_import_file_finalize;
+            } else {
+                make_error("Directory is not a valid lib or does not exist!", path->span); return;
+            }
         } else {
-            make_error("Expected Identifier after import statement", ident->span);
+            make_error("File or directory not found!", path->span);
+            return;
         }
-        return recover_until_newline();
     }
-    uint8_t len = ident->span.len;
-    token_t* cur = get_next();
-    while (cur->type == TOKEN_COLON && peek()->type == TOKEN_COLON) {
-        len += cur->span.len;
-        cur = get_next();
-        if (cur->type != TOKEN_IDENT) {
-            make_error("Unexpected token in import-statement", ident->span);
-            return recover_until_newline();
+    // validate ending
+    char* ending = abs_path+path_len-3;
+    if (strcmp(ending, ".rn") != 0) { 
+        make_error("Imported file must be a valid .rn file", path->span); return;
+    }
+    
+compiler_import_file_finalize:
+    if (_ident == null) {
+        if (ident.data == null) {
+            // find ident
+            ident = file_get_ident(abs_path, path_len);
         }
-        len += cur->span.len;
-        cur = get_next();
+    } else {
+        ident.data = _ident->data; ident.len = _ident->len;
     }
-    str_t path = make_str(ident->value.string_value.data, len);
-    str_t result = str_replace2_1(path, "::", '/');
-    str_t* new_path = array_append(&parser.ast->import_paths);
-    *new_path = result;
-} 
 
+    import_t* file = array_append(&file_names);
+    file->file_path = abs_path; file->ident = ident;
+    file->file_id = file_names.used;
+    parser.ast.imported_files_slice.len++;
+
+    log_debug("Imported file: %s as %s", file->file_path, str_to_cstr(&file->ident));
+    arena_free_last(&arena);
+} 
 
 //#region
 
@@ -886,7 +945,7 @@ type_ref_t* parse_type(void)
             result->is_weak = true; 
         }
         result->is_array = false; result->array_len = null; 
-        result->resolved_type = map_gets(&types, cur->value.string_value);
+        result->resolved_type = map_gets(&parser.ast.symbols, cur->value.string_value);
         if (result->resolved_type == null) {
             result->resolved = false;
             result->ident = cur->value.string_value;
@@ -924,7 +983,7 @@ bool parse_type_inline(type_ref_t* result, bool custom_error_message)
             result->is_weak = true; 
         }
         result->is_array = false; result->array_len = null; 
-        result->resolved_type = map_gets(&types, cur->value.string_value);
+        result->resolved_type = map_gets(&parser.ast.symbols, cur->value.string_value);
         if (result->resolved_type == null) {
             result->resolved = false;
             result->ident = cur->value.string_value;
@@ -1071,12 +1130,11 @@ stmt_t* parse_stmt(void)
     } else if (keyword->type == TOKEN_YIELD) {
         return parse_return(true);
     } else if (keyword->type == TOKEN_IDENT) {
-        token_t* next = get_next(); 
-        if (next->type == TOKEN_COLON) {
+        if (peek()->type == TOKEN_COLON) {
+            advance();
             return parse_const_decl(keyword);
         }
         // else fallthrough
-        retreat();
     } else if (keyword->type == TOKEN_EOF) {
         log_fatal("EOF REACHED!"); return null;
     }
@@ -1178,18 +1236,18 @@ end:
     return fn;
 }
 
-void parse_const_var_decl(token_t* ident)
+void parse_tl_decl(token_t* ident)
 {
     // TODO: Generics
     token_t* next = get_next();
     if (next->type == TOKEN_FN) {
         fn_t* fn = parse_fn(ident);
         if (fn == null) return;
-        if (map_gets(&parser.ast->fns, fn->name) != null) {
+        if (map_gets(&parser.ast.fns, fn->name) != null) {
             make_error("Function with this name already exists", fn->loc);
             return;
         } 
-        map_sets(&parser.ast->fns, fn->name, fn);
+        map_sets(&parser.ast.fns, fn->name, fn);
     } else if (next->type == TOKEN_STRUCT) {
         //return parse_struct(ident);
         log_fatal("parsing STRUCt is not implemented yet!");
@@ -1202,6 +1260,9 @@ void parse_const_var_decl(token_t* ident)
         //return parse_trait(ident);
         log_fatal("parsing TRAIT is not implemented yet");
         exit(-4);
+    } else if (next->type == TOKEN_IMPORT) {
+        // named import
+        parse_import(&ident->value.string_value);
     } else {
         // identifier is a constant variable
         expr_t* expr = parse_expr();
@@ -1222,51 +1283,57 @@ void parse_toplevel_statement(void)
         return parse_impl(ident);
     } else if (next->type == TOKEN_COLON && peek()->type == TOKEN_COLON) { 
         advance();
-        return parse_const_var_decl(ident); 
+        return parse_tl_decl(ident); 
     }
     make_error("Expected '::' or 'impl' after identifier in global scope", next->span);
     recover_until_newline();
 }
 
-void register_basic_types(void)
+type_t* add_builtin_type(str_t ident, u32 size)
 {
-#define basic_type(ident)   type_t (ident) = {0}; \
-                            map_set(&types, #ident, 0, &(ident));
-    basic_type(i64)
-    basic_type(i32)
-    basic_type(i16)
-    basic_type(i8)
-    basic_type(u64)
-    basic_type(u32)
-    basic_type(u16)
-    basic_type(u8)
+    type_t* type = arena_alloc(&arena, sizeof(type_t));
+    type->size_of_type = size;
+    type->fields = array_init(0);
+    type->loc = LOC(0, 0, 0);
+    type->traits = array_init(sizeof(trait_t));
+    map_sets(&parser.ast.symbols, ident, &type);
+    return type;
 }
 
-ast_t* parser_parse_tokens(token_t* tokens, uint32_t token_count)
+void register_basic_types(void)
 {
-    parser.tokens = tokens;
-    parser.token_count = token_count;
-    parser.index = 0;
+    builtin_i64 = add_builtin_type(make_str("i64", 3), 8);
+    builtin_i32 = add_builtin_type(make_str("i32", 3), 4);
+    builtin_i16 = add_builtin_type(make_str("i16", 3), 2);
+    builtin_i8 = add_builtin_type(make_str("i8", 2), 1);
+    builtin_u64 = add_builtin_type(make_str("u64", 3), 8);
+    builtin_u32 = add_builtin_type(make_str("u32", 3), 4);
+    builtin_u16 = add_builtin_type(make_str("u16", 3), 2);
+    builtin_u8 = add_builtin_type(make_str("u8", 2), 1);
+}
 
-    parser.ast = arena_alloc(&arena, sizeof(ast_t));
-    parser.ast->import_paths = array_init(sizeof(str_t));
-
-    bool ok = expect(TOKEN_PACKAGE, "Every file must start with a package declaration!");
-    if (!ok) return parser.ast;
-
-    // TODO: make use of packages
-    token_t* package_ident = get_cur();
-    ok = expect(TOKEN_IDENT, "Expected identifier after package definition");
-    if (!ok) return parser.ast;
-
-    types = (map_t){0};
+void parser_init()
+{
     register_basic_types();
+}
+
+file_t parser_parse()
+{
+    parser.ast.imported_files_slice.index = file_names.used; parser.ast.imported_files_slice.len = 0;
+    parser.ast.imports = (map_t){0};
+    parser.ast.symbols = (map_t){0};
+    parser.ast.fns = (map_t){0};
+    parser.eof = false;
+
+    parser.prev = null;
+    parser.cur = lexer_tokenize_single();
+    parser.next = lexer_tokenize_single();
 
     while (true) {
         token_t* tok = get_cur();
-        if (tok->type == TOKEN_EOF || parser.index >= parser.token_count) break;
+        if (parser.eof) break; // just to be safe
         else if (tok->type == TOKEN_IMPORT) {
-            parse_import();
+            parse_import(null);
         }
         else if (tok->type == TOKEN_IDENT) {
             parse_toplevel_statement(); 

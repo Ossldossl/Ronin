@@ -1,12 +1,46 @@
 #include <stdlib.h>
 #include <string.h>
-#include <xmmintrin.h>
 #include "include/str.h"
+#include "include/console.h"
 #include "include/allocators.h"
 
 //#define USE_SIMD
 
 extern arena_t arena;
+
+str_t str_get_last_n(str_t* target, u32 n)
+{
+    if (n > target->len) {
+        log_fatal("Can't get last %d chars of %d long string!", n, target->len);
+        exit(-1);
+    }
+    str_t result;
+    result.data = target->data + (target->len-n);
+    result.len = n;
+    return result;
+}
+
+// expects both strings to be of the same length (excluding the null char)
+bool str_cmp_c(str_t* a, char* b)
+{
+    char* ad = a->data; 
+    char* e = ad + a->len;
+    while (ad < e) {
+        if (*ad++ != *e) return false;
+    }
+    return true;
+}
+
+bool str_cmp(str_t* a, str_t* b)
+{
+    if (a->len != b->len) return false;
+    char* ad = a->data; char* bd = b->data;
+    char* ae = a->data + a->len;
+    while (ad < ae) {
+        if (*ad++ != *bd++) return false;
+    }
+    return true;
+}
 
 char* str_to_cstr(str_t* str)
 {
@@ -45,4 +79,14 @@ str_t str_replace2_1(str_t str, char* replace, char with)
     }
     result.data[result.len] = 0;
     return result;
+}
+
+void str_replace(str_t* str, char replace, char with)
+{
+    char* ds = str->data; char* de = str->data + str->len;
+    while (ds++ <= de) {
+        if (*ds == replace) {
+            *ds = with;
+        }
+    }
 }

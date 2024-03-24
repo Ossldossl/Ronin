@@ -15,6 +15,7 @@ typedef struct {
 
 array_t array_init(uint16_t element_size);
 void* array_append(array_t* array);
+void* array_pop(array_t* array);
 void* array_get(array_t* array, size_t index);
 uint32_t array_len(array_t* array);
 void array_ensure_extra_capacity(array_t* array, uint32_t count); // stellt sicher, dass mindestens <count> slots frei sind

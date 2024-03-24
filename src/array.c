@@ -33,6 +33,11 @@ void* array_append(array_t* array)
     return slot;
 }
 
+void* array_pop(array_t* array)
+{
+    return array_get(array, --array->used);
+}
+
 void* array_get(array_t* array, size_t index)
 {
     void* slot = (char*)array->data + index * array->element_size;

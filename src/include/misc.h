@@ -1,5 +1,6 @@
 #pragma once
 #include <stdint.h>
+#include <stdbool.h>
 #include "array.h"
 
 #ifndef HAS_ORIGINAL_ERRORS_ARRAY
@@ -8,8 +9,6 @@ extern array_t errors;
 
 #define null NULL
 #define for_to(init, upper_boundary) for(int (init) = 0; (init) < (upper_boundary); (init++))
-
-#include <stdint.h>
 
 typedef signed char        i8;
 typedef short              i16;
@@ -29,10 +28,10 @@ typedef enum {
 } log_level_e;
 
 typedef struct span_t {
-    uint8_t file_id; // only 255 files for now
-    uint32_t line;
-    uint32_t col;
-    uint32_t len;
+    u8 file_id; // only 255 files for now
+    u32 line;
+    u32 col;
+    u32 len;
 } span_t;
 
 typedef struct {
