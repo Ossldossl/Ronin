@@ -22,6 +22,7 @@ struct type_t {
     array_t traits;
     array_t fields;
     u32 size_of_type;
+    str_t name;
 };
 
 struct type_ref_t {
@@ -34,7 +35,7 @@ struct type_ref_t {
     };
     bool is_array;
     expr_t* array_len;
-    bool is_weak;
+    bool is_ptr;
     span_t loc;
 };
 
@@ -289,38 +290,44 @@ typedef struct {
     array_t args;
     array_t body;
     type_ref_t return_type;
+    bool is_inline;
     span_t loc;
 } fn_t;
 
 typedef struct {
-    str_t name;
-    field_t fields;
-} struct_t;
-
-typedef struct {
-    str_t name;
     map_t cases;
     u16 case_count;
+    str_t name;
 } enum_t;
 
 typedef struct {
-    str_t name;
     array_t members;
     u32 size;
+    str_t name;
 } union_t;
 
 typedef struct {
     enum {
-        SYMBOL_ENUM,
-        SYMBOL_STRUCT,
+        SYMBOL_VAR,
+        SYMBOL_TYPE, // structs
         SYMBOL_UNION,
+        SYMBOL_ENUM,
+        SYMBOL_FN,
     } kind;
     union {
-        struct_t _struct;
+        type_t _type;
         union_t _union;
         enum_t _enum;
+        field_t _var;
+        fn_t _fn;
     };
 } symbol_t;
+
+typedef struct scope_t {
+    struct scope_t* parent;
+    u16 num_vars;
+    map_t syms; // map of symbol_t
+} scope_t;
 
 typedef struct {
     str_t ident;
@@ -329,8 +336,7 @@ typedef struct {
 } import_t;
 
 typedef struct {
-    map_t symbols;
-    map_t fns;
+    scope_t* global_scope;
     str_t ident;
     map_t imports; // map_t of file_t
     struct {
@@ -338,6 +344,5 @@ typedef struct {
     } imported_files_slice;
 } file_t;
     
-void parser_init();
 file_t parser_parse();
 void parser_debug(file_t* ast);

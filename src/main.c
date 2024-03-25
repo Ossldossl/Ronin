@@ -237,7 +237,6 @@ int main(int argc, char** argv)
     bool ok = SetCurrentDirectoryA(str_to_cstr(&dir));
     arena_free_last(&arena);
     lexer_init(file_content, file_size, 0);
-    parser_init();
 
     // parse file
     file_t ast = parser_parse();

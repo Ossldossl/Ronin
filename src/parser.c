@@ -17,8 +17,9 @@ typedef struct {
     token_t* prev; 
     token_t* cur; 
     token_t* next;
-    bool eof;
+    scope_t* cur_scope;
     u8 file_id;
+    bool eof;
     file_t ast;
 } parser_t;
 
@@ -72,7 +73,7 @@ static void print_post_value(int indent, post_expr_t* post)
 static void print_statement(u32 indent, stmt_t* stmt);
 static void print_expr(int indent, expr_t* expr);
 
-static void print_type(u32 indent, type_ref_t* type)
+static void print_type_ref(u32 indent, type_ref_t* type)
 {
     if (type->inferred) {
         print_indent(indent);
@@ -91,7 +92,7 @@ static void print_type(u32 indent, type_ref_t* type)
         print_indent(indent);
         printf("- array of:\n");
         indent++;
-            print_type(indent, type->rhs);
+            print_type_ref(indent, type->rhs);
         --indent; 
         print_indent(indent);
         printf("- array_len:\n");
@@ -101,7 +102,7 @@ static void print_type(u32 indent, type_ref_t* type)
     }
 
     print_indent(indent);
-    printf("- weak?: %s\n", type->is_weak ? "true" : "false");
+    printf("- ptr?: %s\n", type->is_ptr ? "true" : "false");
 }
 
 static void print_expr(int indent, expr_t* expr)
@@ -300,7 +301,7 @@ static void print_statement(u32 indent, stmt_t* stmt)
                 print_indent(indent);
                 printf("- type:\n");
                 ++indent;
-                    print_type(indent, &stmt->let_stmt.type);
+                    print_type_ref(indent, &stmt->let_stmt.type);
                 --indent;
                 print_indent(indent);
                 printf("- initializer: %s", stmt->let_stmt.initializer==null ? "empty\n" : "\n");
@@ -336,16 +337,47 @@ void print_fn(fn_t* fn)
     printf("ENDFUNCTION %s\n\n", str_to_cstr(&fn->name));
 }
 
+// TODO: PRINT TYPE
+// TODO: Allow pointer types
+// TODO: Allow inline functions
+
+void print_type(type_t* t)
+{
+    u32 indent = 0;
+    printf("TYPE %s (size: %d)\n", str_to_cstr(&t->name), t->size_of_type);
+
+    printf("ENDTYPE\n\n");
+}
+
 void parser_debug_file(file_t* ast)
 {
-    map_t* cur = map_get_at(&ast->fns, 0); 
+    map_t* cur = map_get_at(&ast->global_scope->syms, 0); 
     if (cur == null) {
         log_fatal("No functions in file!"); return;
     }
     do {
-        fn_t* fn = cur->value;
-        if (fn == null) { log_fatal("fn_t in map should never be null!"); return; }
-        print_fn(fn);
+        symbol_t* sym = cur->value;
+        if (sym == null) { log_fatal("file is empty!"); return; }
+        switch (sym->kind) {
+            case SYMBOL_TYPE: {
+                print_type(&sym->_type);
+            } break;
+            case SYMBOL_ENUM: {
+                log_fatal("PRINTING ENUM IS NOT IMPLEMENTED YET");
+                //print_enum(&sym->_enum);
+            } break;
+            case SYMBOL_UNION: {
+                log_fatal("PRINTING UNION IS NOT IMPLEMENTED YET");
+                //print_union(&sym->_union);
+            } break;
+            case SYMBOL_FN: {
+                print_fn(&sym->_fn);
+            } break;
+            case SYMBOL_VAR: {
+                log_fatal("PRINTING VAR IS NOT IMPLEMENTED YET");
+                //print_const_var(&sym->_var);
+            } break;
+        }
     } while ((cur = map_next(cur)));
 }
 
@@ -526,6 +558,24 @@ expr_t* make_post_lhs(post_op_kind_e op_kind, expr_t* lhs, span_t loc)
     return result;
 }
 
+type_t* add_type(str_t ident, u32 size, array_t fields, span_t loc)
+{
+    symbol_t* s = arena_alloc(&arena, sizeof(symbol_t));
+    s->kind = SYMBOL_TYPE;
+    s->_type.size_of_type = size;
+    s->_type.fields = fields;
+    s->_type.loc = loc,
+    s->_type.traits = array_init(sizeof(trait_t));
+    s->_type.name = ident;
+    map_sets(&parser.cur_scope->syms, ident, s);
+    return &s->_type;
+}
+
+type_t* add_builtin_type(str_t ident, u32 size)
+{
+    return add_type(ident, size, array_init(0), LOC(0, 0, 0));
+}
+
 // todo: add support for importing libraries (directories)
 void parse_import(str_t* _ident)
 {
@@ -584,8 +634,18 @@ compiler_import_file_finalize:
     arena_free_last(&arena);
 } 
 
-//#region
+symbol_t* resolve_symbol(str_t ident)
+{
+    scope_t* cur = parser.cur_scope;
+    while (cur) {
+        symbol_t* result = map_gets(&cur->syms, ident);
+        if (result) return result;
+        else cur = cur->parent;
+    } 
+    return null;
+}
 
+//#region
 expr_t* parse_post_ident(expr_t* lhs)
 {
     if (lhs == null) return lhs;
@@ -939,21 +999,29 @@ type_ref_t* parse_type(void)
     } 
     else if (cur->type == TOKEN_IDENT) {
         type_ref_t* result = arena_alloc(&arena, sizeof(type_ref_t));
-        result->is_weak = false; 
-        if (peek()->type == TOKEN_QUEST) {
-            advance(); 
-            result->is_weak = true; 
-        }
+        result->is_ptr = false; 
         result->is_array = false; result->array_len = null; 
-        result->resolved_type = map_gets(&parser.ast.symbols, cur->value.string_value);
-        if (result->resolved_type == null) {
+        symbol_t* sym = resolve_symbol(cur->value.string_value); 
+        if (sym == null || sym->kind != SYMBOL_TYPE) {
             result->resolved = false;
             result->ident = cur->value.string_value;
-        } else result->resolved = true;
+        } else {
+            result->resolved_type = &sym->_type;
+            result->resolved = true;
+        }
         result->loc = cur->span;
         result->inferred = false;
         advance();
         return result; 
+    } else if (cur->type == TOKEN_BAND) {
+        type_ref_t* result = arena_alloc(&arena, sizeof(type_ref_t));
+        result->is_ptr = true;
+        advance();
+        type_ref_t* rhs = parse_type();
+        result->is_array = false; result->is_ptr = true; result->array_len = 0;
+        result->resolved = rhs->resolved; result->rhs = rhs;
+        result->loc = cur->span; result->inferred = false;
+        return result;
     }
     make_error("Expected a type here", cur->span);
     return null;
@@ -977,21 +1045,28 @@ bool parse_type_inline(type_ref_t* result, bool custom_error_message)
         return true;
     } 
     else if (cur->type == TOKEN_IDENT) {
-        result->is_weak = false; 
-        if (peek()->type == TOKEN_QUEST) {
-            advance();
-            result->is_weak = true; 
-        }
+        result->is_ptr = false; 
         result->is_array = false; result->array_len = null; 
-        result->resolved_type = map_gets(&parser.ast.symbols, cur->value.string_value);
-        if (result->resolved_type == null) {
+        symbol_t* sym = resolve_symbol(cur->value.string_value); 
+        if (sym == null || sym->kind != SYMBOL_TYPE) {
             result->resolved = false;
             result->ident = cur->value.string_value;
-        } else result->resolved = true;
+        } else {
+            result->resolved_type = &sym->_type;
+            result->resolved = true;
+        }
         result->loc = cur->span;
         result->inferred = false;
         advance();
         return true; 
+    } else if (cur->type == TOKEN_BAND) {
+        result->is_ptr = true;
+        advance();
+        type_ref_t* rhs = parse_type();
+        result->is_array = false; result->is_ptr = true; result->array_len = 0;
+        result->resolved = rhs->resolved; result->rhs = rhs;
+        result->loc = cur->span; result->inferred = false;
+        return result;
     }
     if (!custom_error_message) make_error("Expected a type here", cur->span);
     result->inferred = true;
@@ -1034,7 +1109,6 @@ stmt_t* parse_let(void)
     return let_stmt;
 }
 
-// TODO: parse for 
 stmt_t* parse_for(void)
 {
     token_t* f = get_cur();
@@ -1049,7 +1123,6 @@ stmt_t* parse_for(void)
         result->for_loop.as_for_in.ident = cur->value.string_value;
         result->for_loop.as_for_in.in = parse_expr();
         result->loc = f->span;
-        
     } else {
         result->for_loop.is_for_in = false;
         result->for_loop.as_for.initializer = parse_stmt();
@@ -1166,29 +1239,70 @@ stmt_t* parse_stmt(void)
     return result;
 }
 
-fn_t* parse_fn(token_t* ident)
+// TODO: update struct parsing to produce real types
+void parse_struct(token_t* ident)
+{
+    advance();
+    if (!expect(TOKEN_LBRACE, "Expected '{' after struct declaration")) {
+        recover_until_newline(); return;
+    }
+    array_t fields = array_init(sizeof(field_t));
+    while (true) {
+        token_t* ident = get_cur();
+        if (ident->type != TOKEN_IDENT) {
+            if (ident->type == TOKEN_RBRACE) break;
+            make_error("Expected identifier", ident->span);
+            // TODO: maybe make only the field unavailable instead of the whole struct
+            arena_free_last(&arena);
+            recover_until_next_rbrace();
+            return;
+        } 
+        advance();
+        if (!expect(TOKEN_COLON, "Expected ':' and a type after identifier")) {
+            arena_free_last(&arena);
+            recover_until_next_rbrace();
+            return;
+        }
+        field_t* f = array_append(&fields);
+        parse_type_inline(&f->type, null);
+        f->name = ident->value.string_value;
+        if (!expect(TOKEN_SEMICOLON, "Expected semicolon after struct field")) {
+            arena_free_last(&arena);
+            recover_until_next_rbrace();
+            return;
+        }
+    }
+    // skip }
+    advance();
+    add_type(ident->value.string_value, 0, fields, ident->span);
+}
+
+void parse_fn(token_t* ident, bool is_inline)
 {
     token_t* lparen = get_next();
     if (lparen->type != TOKEN_LPAREN) {
         make_error("Expected argument list after function keyword", get_previous()->span);
-        recover_until_next_rbrace(); return null;
+        recover_until_next_rbrace(); return;
     }
     token_t* next = null;
-    fn_t* fn = arena_alloc(&arena, sizeof(fn_t));
+    symbol_t* s = arena_alloc(&arena, sizeof(symbol_t));
+    s->kind = SYMBOL_FN;
+    fn_t* fn = &s->_fn;
     fn->args = array_init(sizeof(field_t));
     fn->name = ident->value.string_value;
     fn->loc = ident->span;
+    fn->is_inline = is_inline;
     
     if (peek()->type != TOKEN_RPAREN) {
         // parse arguments
         do {
             token_t* ident = get_next();
             if (ident->type != TOKEN_IDENT) {
-                make_error("Expected identifier", ident->span); recover_until_next_rbrace(); return null;
+                make_error("Expected identifier", ident->span); recover_until_next_rbrace(); return;
             }
             token_t* colon = get_next();
             if (colon->type != TOKEN_COLON) {
-                make_error("Expected ':' after argument identifier", colon->span); recover_until_next_rbrace(); return null;
+                make_error("Expected ':' after argument identifier", colon->span); recover_until_next_rbrace(); return;
             }
 
             advance();
@@ -1200,7 +1314,7 @@ fn_t* parse_fn(token_t* ident)
         } while (next->type == TOKEN_COMMA);
         if (next->type != TOKEN_RPAREN) {
             make_error_h("No matching closing parenthesis", lparen->span, "Insert ')' here", next->span);
-            recover_until_next_semicolon(); return null;
+            recover_until_next_semicolon(); return;
         }
     } else { advance(); } 
 
@@ -1215,12 +1329,13 @@ fn_t* parse_fn(token_t* ident)
 
     if (next->type == TOKEN_SEMICOLON) {
         advance();
-        return fn;
+        goto end;
+        return;
     } 
        
     if (next->type != TOKEN_LBRACE) {
         make_error("Expected block or semicolon following function declaration", next->span);
-        recover_until_next_semicolon(); return fn;
+        recover_until_next_semicolon(); return;
     }
     next = get_next();
     while (next->type != TOKEN_RBRACE) {
@@ -1233,25 +1348,28 @@ fn_t* parse_fn(token_t* ident)
     }
     advance();
 end:
-    return fn;
+    map_sets(&parser.cur_scope->syms, ident->value.string_value, s);
 }
 
 void parse_tl_decl(token_t* ident)
 {
     // TODO: Generics
+    if (resolve_symbol(ident->value.string_value) != null) {
+        make_error("Symbol with this name already exists", ident->span);
+        recover_until_next_semicolon();
+        return;
+    } 
     token_t* next = get_next();
-    if (next->type == TOKEN_FN) {
-        fn_t* fn = parse_fn(ident);
-        if (fn == null) return;
-        if (map_gets(&parser.ast.fns, fn->name) != null) {
-            make_error("Function with this name already exists", fn->loc);
-            return;
-        } 
-        map_sets(&parser.ast.fns, fn->name, fn);
+    if (next->type == TOKEN_INLINE) {
+        next = get_next();
+        if (next->type != TOKEN_FN) {
+            make_error("Expected a function here after the inline keyword!", next->span);
+        }
+        return parse_fn(ident, true);
+    } else if (next->type == TOKEN_FN) {
+        return parse_fn(ident, false);
     } else if (next->type == TOKEN_STRUCT) {
-        //return parse_struct(ident);
-        log_fatal("parsing STRUCt is not implemented yet!");
-        exit(-4);
+        return parse_struct(ident);
     } else if (next->type == TOKEN_ENUM) {
         //return parse_enum(ident);
         log_fatal("parsing ENUM is not implemented yet");
@@ -1267,6 +1385,12 @@ void parse_tl_decl(token_t* ident)
         // identifier is a constant variable
         expr_t* expr = parse_expr();
         expect_semicolon(&next->span);
+        parser.cur_scope->num_vars++;
+        symbol_t* s = arena_alloc(&arena, sizeof(symbol_t));
+        s->kind = SYMBOL_VAR;
+        s->_var.name = ident->value.string_value;
+        s->_var.type.resolved = false;
+        map_sets(&parser.cur_scope->syms, ident->value.string_value, s);
     }
 }
 
@@ -1289,17 +1413,6 @@ void parse_toplevel_statement(void)
     recover_until_newline();
 }
 
-type_t* add_builtin_type(str_t ident, u32 size)
-{
-    type_t* type = arena_alloc(&arena, sizeof(type_t));
-    type->size_of_type = size;
-    type->fields = array_init(0);
-    type->loc = LOC(0, 0, 0);
-    type->traits = array_init(sizeof(trait_t));
-    map_sets(&parser.ast.symbols, ident, &type);
-    return type;
-}
-
 void register_basic_types(void)
 {
     builtin_i64 = add_builtin_type(make_str("i64", 3), 8);
@@ -1312,23 +1425,22 @@ void register_basic_types(void)
     builtin_u8 = add_builtin_type(make_str("u8", 2), 1);
 }
 
-void parser_init()
-{
-    register_basic_types();
-}
-
 file_t parser_parse()
 {
     parser.ast.imported_files_slice.index = file_names.used; parser.ast.imported_files_slice.len = 0;
     parser.ast.imports = (map_t){0};
-    parser.ast.symbols = (map_t){0};
-    parser.ast.fns = (map_t){0};
     parser.eof = false;
 
     parser.prev = null;
     parser.cur = lexer_tokenize_single();
     parser.next = lexer_tokenize_single();
 
+    parser.cur_scope = arena_alloc(&arena, sizeof(scope_t));
+    parser.ast.global_scope = parser.cur_scope;
+    parser.cur_scope->num_vars = 0; parser.cur_scope->syms = (map_t){0};
+    parser.cur_scope->parent = null;
+
+    register_basic_types();
     while (true) {
         token_t* tok = get_cur();
         if (parser.eof) break; // just to be safe

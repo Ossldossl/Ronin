@@ -3,6 +3,14 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef TEST_MAP
+#include <stdio.h>
+uint64_t fnv1a(char* start, char* end)
+{
+    return rand() % 255+1;
+}
+#else
+
 uint64_t fnv1a(char* start, char* end)
 {
     const uint64_t magic_prime = 0x00000100000001b3;
@@ -12,13 +20,17 @@ uint64_t fnv1a(char* start, char* end)
     }
     return hash;
 }
+#endif
 
 void* map_get(map_t* root, char* key, uint32_t len)
 {
+    if (root->parent != null) {
+        while (root->parent) root = root->parent;
+    }
     if (len == 0) {
         len = strlen(key);
     }
-    uint64_t hash = fnv1a(key, key + len);
+    uint64_t hash = fnv1a(key, key + len-1);
     map_t* cur = root;
     while (true) {
         if (cur == null || cur->hash == hash) break;
@@ -50,6 +62,7 @@ static void rotate_right(map_t* x)
 static void rotate_left(map_t* x)
 {
     map_t* y = x->right;
+    if (y == null) return;
     x->right = y->left;
     if (y->left) {
         y->left->parent = x;
@@ -120,10 +133,13 @@ static void rebalance_tree(map_t* cur)
 
 void map_set(map_t* root, char* key, uint32_t len, void* value)
 {
+    if (root->parent != null) {
+        while (root->parent) root = root->parent;
+    }
     if (len == 0) {
         len = strlen(key);
     }
-    uint64_t hash = fnv1a(key, key + len);
+    uint64_t hash = fnv1a(key, key + len-1);
     map_t* cur = root;
     map_t** place_to_insert = null;
     while (true) {
@@ -167,35 +183,47 @@ void map_sets(map_t* root, str_t key, void* value)
 
 map_t* map_next(map_t* cur)
 {
-    if (cur->parent == null) {
-        // cur is root
-        if (cur->right == null) return null;
+    if (cur->right) {
         cur = cur->right;
-        while(cur->left) {
+        while (cur->left) {
             cur = cur->left;
         }
-    } else {
-        if (cur->right == null) {
-            if (cur == cur->parent->left) {
-                cur = cur->parent;
-            } else {
-                cur = cur->parent->parent;
-            }
-        } else { 
-            cur = cur->right;
-            while (cur->left) {
-                cur = cur->left;
-            }
+        return cur;
+    } else { // cur right and cur left are always null at this point
+        while (cur->parent && cur == cur->parent->right) {
+            cur = cur->parent;
         }
+        // when we're left of parent
+        //  on the next iteration we should return parent->right
+        return cur->parent; 
     }
-    return cur;
 }
+
+#ifdef TEST_MAP
+int main(int argc, char** argv)
+{
+    map_t root = (map_t) {0};
+    for (int i = 0; i < 150; i++) {
+        map_set(&root, "a", 1, null);
+    }
+
+    map_t* cur = map_get_at(&root, 0);
+    do {
+        printf("%llu, ", cur->hash);
+    } while ((cur = map_next(cur)));
+    return 0;
+}
+#endif
+
 
 // traverses tree from the first node to the node with the zero-based index 'index'
 map_t* map_get_at(map_t* root, uint32_t index)
 {
+    while (root->parent) {
+        root = root->parent;
+    }
     // first find the first node
-    if (root->value == 0) return null; // when root is empty we have no entries
+    if (root->hash == 0) return null; // when root is empty we have no entries
     map_t* cur = root;
     while (cur->left) {
         cur = cur->left;

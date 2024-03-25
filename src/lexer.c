@@ -424,6 +424,7 @@ token_t*parse_identifier_or_keyword(void)
         case 'i': {
             CHECK_AND_MAKE_TOKEN("if", 2, TOKEN_IF)
             else CHECK_AND_MAKE_TOKEN("in", 2, TOKEN_IN) 
+            else CHECK_AND_MAKE_TOKEN("inline", 6, TOKEN_INLINE)
             else if (keyword_eq(&lexer.content[lexer.index], ("impl"), (4))) {
                 if (!is_valid_ident_char(lexer.content[lexer.index + (4)])) {
                     lexer.index += (4);
@@ -494,57 +495,59 @@ token_t*lexer_tokenize_single(void)
     }
     switch (c) {
         case '(': {
-            advance(); return make_token_nv(TOKEN_LPAREN, LOC(lexer.cur_file_id, lexer.line, lexer.col, 1)); 
+            advance(); return make_token_nv(TOKEN_LPAREN, LOC(lexer.cur_file_id, lexer.line, lexer.col-1, 1)); 
         }
         case ')': {
-            advance(); return make_token_nv(TOKEN_RPAREN, LOC(lexer.cur_file_id, lexer.line, lexer.col, 1)); 
+            advance(); return make_token_nv(TOKEN_RPAREN, LOC(lexer.cur_file_id, lexer.line, lexer.col-1, 1)); 
         }
         case '[': {
-            advance(); return make_token_nv(TOKEN_LBRACKET, LOC(lexer.cur_file_id, lexer.line, lexer.col, 1)); 
+            advance(); return make_token_nv(TOKEN_LBRACKET, LOC(lexer.cur_file_id, lexer.line, lexer.col-1, 1)); 
         }
         case ']': {
-            advance(); return make_token_nv(TOKEN_RBRACKET, LOC(lexer.cur_file_id, lexer.line, lexer.col, 1)); 
+            advance(); return make_token_nv(TOKEN_RBRACKET, LOC(lexer.cur_file_id, lexer.line, lexer.col-1, 1)); 
         }
         case '{': {
-            advance(); return make_token_nv(TOKEN_LBRACE, LOC(lexer.cur_file_id, lexer.line, lexer.col, 1)); 
+            advance(); return make_token_nv(TOKEN_LBRACE, LOC(lexer.cur_file_id, lexer.line, lexer.col-1, 1)); 
         }
         case '}': {
-            advance(); return make_token_nv(TOKEN_RBRACE, LOC(lexer.cur_file_id, lexer.line, lexer.col, 1)); 
+            advance(); return make_token_nv(TOKEN_RBRACE, LOC(lexer.cur_file_id, lexer.line, lexer.col-1, 1)); 
         }
         case '+': {
             advance();
             if (peek() == '=') {
                 advance();
-                return make_token_nv(TOKEN_PLUS_EQ, LOC(lexer.cur_file_id, lexer.line, lexer.col-1, 2)); 
+                return make_token_nv(TOKEN_PLUS_EQ, LOC(lexer.cur_file_id, lexer.line, lexer.col-1-1, 2)); 
             } else if (peek() == '+') {
-                return make_token_nv(TOKEN_INC, LOC(lexer.cur_file_id, lexer.line, lexer.col-1, 2)); 
+                advance();
+                return make_token_nv(TOKEN_INC, LOC(lexer.cur_file_id, lexer.line, lexer.col-1-1, 2)); 
             } 
-            return make_token_nv(TOKEN_PLUS, LOC(lexer.cur_file_id, lexer.line, lexer.col, 1)); 
+            return make_token_nv(TOKEN_PLUS, LOC(lexer.cur_file_id, lexer.line, lexer.col-1, 1)); 
         }
         case '-': {
             advance();
             if (peek() == '=') {
                 advance();
-                return make_token_nv(TOKEN_MINUS_EQ, LOC(lexer.cur_file_id, lexer.line, lexer.col-1, 2)); 
+                return make_token_nv(TOKEN_MINUS_EQ, LOC(lexer.cur_file_id, lexer.line, lexer.col-1-1, 2)); 
             } else if (peek() == '-') {
-                return make_token_nv(TOKEN_DEC, LOC(lexer.cur_file_id, lexer.line, lexer.col-1, 2)); 
+                advance();
+                return make_token_nv(TOKEN_DEC, LOC(lexer.cur_file_id, lexer.line, lexer.col-1-1, 2)); 
             }
-            return make_token_nv(TOKEN_MINUS, LOC(lexer.cur_file_id, lexer.line, lexer.col, 1)); 
+            return make_token_nv(TOKEN_MINUS, LOC(lexer.cur_file_id, lexer.line, lexer.col-1, 1)); 
         }
         case '*': {
                 advance();
             if (peek() == '=') {
                 advance();
-                return make_token_nv(TOKEN_ASTERISK_EQ, LOC(lexer.cur_file_id, lexer.line, lexer.col-1, 2)); 
+                return make_token_nv(TOKEN_ASTERISK_EQ, LOC(lexer.cur_file_id, lexer.line, lexer.col-1-1, 2)); 
             }
-            return make_token_nv(TOKEN_ASTERISK, LOC(lexer.cur_file_id, lexer.line, lexer.col, 1)); 
+            return make_token_nv(TOKEN_ASTERISK, LOC(lexer.cur_file_id, lexer.line, lexer.col-1, 1)); 
         }
         case '/': {
             c = peek();
             advance();
             if (c == '=') {
                 advance();
-                return make_token_nv(TOKEN_SLASH_EQ, LOC(lexer.cur_file_id, lexer.line, lexer.col-1, 2)); 
+                return make_token_nv(TOKEN_SLASH_EQ, LOC(lexer.cur_file_id, lexer.line, lexer.col-1-1, 2)); 
             } else if (c == '/') {
                 // skip comment until next line
                 while (true) {
@@ -558,115 +561,115 @@ token_t*lexer_tokenize_single(void)
                 }
                 return lexer_tokenize_single();
             }
-            return make_token_nv(TOKEN_SLASH, LOC(lexer.cur_file_id, lexer.line, lexer.col, 1)); 
+            return make_token_nv(TOKEN_SLASH, LOC(lexer.cur_file_id, lexer.line, lexer.col-1, 1)); 
         }
         case '%': {
             advance();
             if (peek() == '=') {
                 advance();
-                return make_token_nv(TOKEN_MODULO_EQ, LOC(lexer.cur_file_id, lexer.line, lexer.col-1, 2)); 
+                return make_token_nv(TOKEN_MODULO_EQ, LOC(lexer.cur_file_id, lexer.line, lexer.col-1-1, 2)); 
             }
-            return make_token_nv(TOKEN_MODULO, LOC(lexer.cur_file_id, lexer.line, lexer.col, 1)); 
+            return make_token_nv(TOKEN_MODULO, LOC(lexer.cur_file_id, lexer.line, lexer.col-1, 1)); 
         }
         case '|': {
             c = peek();
             advance();
             if (c == '=') {
                 advance();
-                return make_token_nv(TOKEN_BOR_EQ, LOC(lexer.cur_file_id, lexer.line, lexer.col-1, 2)); 
+                return make_token_nv(TOKEN_BOR_EQ, LOC(lexer.cur_file_id, lexer.line, lexer.col-1-1, 2)); 
             } else if (c == '|') {
                 advance();
-                return make_token_nv(TOKEN_LOR, LOC(lexer.cur_file_id, lexer.line, lexer.col-1, 2)); 
+                return make_token_nv(TOKEN_LOR, LOC(lexer.cur_file_id, lexer.line, lexer.col-1-1, 2)); 
             }
-            return make_token_nv(TOKEN_BOR, LOC(lexer.cur_file_id, lexer.line, lexer.col, 1)); 
+            return make_token_nv(TOKEN_BOR, LOC(lexer.cur_file_id, lexer.line, lexer.col-1, 1)); 
         }
         case '&': {
             advance();
             c = peek();
             if (c == '=') {
                 advance();
-                return make_token_nv(TOKEN_BAND_EQ, LOC(lexer.cur_file_id, lexer.line, lexer.col-1, 2)); 
+                return make_token_nv(TOKEN_BAND_EQ, LOC(lexer.cur_file_id, lexer.line, lexer.col-1-1, 2)); 
             } else if (c == '&') {
                 advance();
-                return make_token_nv(TOKEN_LAND, LOC(lexer.cur_file_id, lexer.line, lexer.col-1, 2)); 
+                return make_token_nv(TOKEN_LAND, LOC(lexer.cur_file_id, lexer.line, lexer.col-1-1, 2)); 
             }
-            return make_token_nv(TOKEN_BAND, LOC(lexer.cur_file_id, lexer.line, lexer.col, 1)); 
+            return make_token_nv(TOKEN_BAND, LOC(lexer.cur_file_id, lexer.line, lexer.col-1, 1)); 
         }
         case '~': {
             advance();
-            return make_token_nv(TOKEN_BNOT, LOC(lexer.cur_file_id, lexer.line, lexer.col, 1)); 
+            return make_token_nv(TOKEN_BNOT, LOC(lexer.cur_file_id, lexer.line, lexer.col-1, 1)); 
         }
         case '^': {
                 advance();
             if (peek() == '=') {
                 advance();
-                return make_token_nv(TOKEN_XOR_EQ, LOC(lexer.cur_file_id, lexer.line, lexer.col-1, 2)); 
+                return make_token_nv(TOKEN_XOR_EQ, LOC(lexer.cur_file_id, lexer.line, lexer.col-1-1, 2)); 
             } 
-            return make_token_nv(TOKEN_XOR, LOC(lexer.cur_file_id, lexer.line, lexer.col, 1)); 
+            return make_token_nv(TOKEN_XOR, LOC(lexer.cur_file_id, lexer.line, lexer.col-1, 1)); 
         }
         case '<': {
             c = peek();
                 advance();
             if (c == '<') {
                 advance();
-                return make_token_nv(TOKEN_LSHIFT, LOC(lexer.cur_file_id, lexer.line, lexer.col-1, 2)); 
+                return make_token_nv(TOKEN_LSHIFT, LOC(lexer.cur_file_id, lexer.line, lexer.col-1-1, 2)); 
             } else if (c == '=') {
                 advance();
-                return make_token_nv(TOKEN_LEQ, LOC(lexer.cur_file_id, lexer.line, lexer.col-1, 2)); 
+                return make_token_nv(TOKEN_LEQ, LOC(lexer.cur_file_id, lexer.line, lexer.col-1-1, 2)); 
             }
-            return make_token_nv(TOKEN_LT, LOC(lexer.cur_file_id, lexer.line, lexer.col, 1)); 
+            return make_token_nv(TOKEN_LT, LOC(lexer.cur_file_id, lexer.line, lexer.col-1, 1)); 
         }
         case '>': {
             c = peek();
                 advance();
             if (c == '>') {
                 advance();
-                return make_token_nv(TOKEN_RSHIFT, LOC(lexer.cur_file_id, lexer.line, lexer.col-1, 2)); 
+                return make_token_nv(TOKEN_RSHIFT, LOC(lexer.cur_file_id, lexer.line, lexer.col-1-1, 2)); 
             } else if (c == '=') {
                 advance();
-                return make_token_nv(TOKEN_GEQ, LOC(lexer.cur_file_id, lexer.line, lexer.col-1, 2)); 
+                return make_token_nv(TOKEN_GEQ, LOC(lexer.cur_file_id, lexer.line, lexer.col-1-1, 2)); 
             }
-            return make_token_nv(TOKEN_GT, LOC(lexer.cur_file_id, lexer.line, lexer.col, 1)); 
+            return make_token_nv(TOKEN_GT, LOC(lexer.cur_file_id, lexer.line, lexer.col-1, 1)); 
         }
         case '=': {
             c = peek();
                 advance();
             if (c == '=') {
                 advance();
-                return make_token_nv(TOKEN_EQ, LOC(lexer.cur_file_id, lexer.line, lexer.col-1, 2)); 
+                return make_token_nv(TOKEN_EQ, LOC(lexer.cur_file_id, lexer.line, lexer.col-1-1, 2)); 
             } else if (c == '>') {
                 advance();
-                return make_token_nv(TOKEN_ARROW, LOC(lexer.cur_file_id, lexer.line, lexer.col-1, 2)); 
+                return make_token_nv(TOKEN_ARROW, LOC(lexer.cur_file_id, lexer.line, lexer.col-1-1, 2)); 
             };
-            return make_token_nv(TOKEN_ASSIGN, LOC(lexer.cur_file_id, lexer.line, lexer.col, 1)); 
+            return make_token_nv(TOKEN_ASSIGN, LOC(lexer.cur_file_id, lexer.line, lexer.col-1, 1)); 
         }
         case '!': {
                 advance();
             if (peek() == '=') {
                 advance();
-                return make_token_nv(TOKEN_NEQ, LOC(lexer.cur_file_id, lexer.line, lexer.col-1, 2)); 
+                return make_token_nv(TOKEN_NEQ, LOC(lexer.cur_file_id, lexer.line, lexer.col-1-1, 2)); 
             }
-            return make_token_nv(TOKEN_NOT, LOC(lexer.cur_file_id, lexer.line, lexer.col, 1)); 
+            return make_token_nv(TOKEN_NOT, LOC(lexer.cur_file_id, lexer.line, lexer.col-1, 1)); 
         }
         case '?': {
                 advance();
             if (peek() == '?') {
                 advance();
-                return make_token_nv(TOKEN_DQUEST, LOC(lexer.cur_file_id, lexer.line, lexer.col-1, 2)); 
+                return make_token_nv(TOKEN_DQUEST, LOC(lexer.cur_file_id, lexer.line, lexer.col-1-1, 2)); 
             }
-            return make_token_nv(TOKEN_QUEST, LOC(lexer.cur_file_id, lexer.line, lexer.col, 1)); 
+            return make_token_nv(TOKEN_QUEST, LOC(lexer.cur_file_id, lexer.line, lexer.col-1, 1)); 
         }
         case '.': {
-            advance(); return make_token_nv(TOKEN_PERIOD, LOC(lexer.cur_file_id, lexer.line, lexer.col, 1)); 
+            advance(); return make_token_nv(TOKEN_PERIOD, LOC(lexer.cur_file_id, lexer.line, lexer.col-1, 1)); 
         }
         case ',': {
-            advance(); return make_token_nv(TOKEN_COMMA, LOC(lexer.cur_file_id, lexer.line, lexer.col, 1)); 
+            advance(); return make_token_nv(TOKEN_COMMA, LOC(lexer.cur_file_id, lexer.line, lexer.col-1, 1)); 
         }
         case ';': {
-            advance(); return make_token_nv(TOKEN_SEMICOLON, LOC(lexer.cur_file_id, lexer.line, lexer.col, 1)); 
+            advance(); return make_token_nv(TOKEN_SEMICOLON, LOC(lexer.cur_file_id, lexer.line, lexer.col-1, 1)); 
         }
         case ':': {
-            advance(); return make_token_nv(TOKEN_COLON, LOC(lexer.cur_file_id, lexer.line, lexer.col, 1)); 
+            advance(); return make_token_nv(TOKEN_COLON, LOC(lexer.cur_file_id, lexer.line, lexer.col-1, 1)); 
         }
         default: {
             return parse_identifier_or_keyword(); 
