@@ -295,7 +295,7 @@ typedef struct {
 } fn_t;
 
 typedef struct {
-    map_t cases;
+    map_t cases; // map_t of u64
     u16 case_count;
     str_t name;
 } enum_t;
@@ -308,10 +308,10 @@ typedef struct {
 
 typedef struct {
     enum {
-        SYMBOL_VAR,
         SYMBOL_TYPE, // structs
         SYMBOL_UNION,
         SYMBOL_ENUM,
+        SYMBOL_VAR,
         SYMBOL_FN,
     } kind;
     union {

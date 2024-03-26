@@ -1,1 +1,1 @@
-"../out/main.exe" build --print-ast "tests/struct.rn"
+"../out/main.exe" build --print-ast "tests/enum.rn"

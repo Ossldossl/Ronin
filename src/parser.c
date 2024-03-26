@@ -29,6 +29,10 @@ extern array_t file_names;
 
 parser_t parser;
 
+void parse_fn(token_t* ident, bool is_inline);
+void parse_struct(token_t* ident);
+void parse_enum(token_t* ident);
+void parse_union(token_t* ident);
 stmt_t* parse_stmt(void);
 expr_t* parse_expr(void);
 
@@ -42,6 +46,7 @@ type_t* builtin_u64 = null;
 type_t* builtin_u32 = null;
 type_t* builtin_u16 = null;
 type_t* builtin_u8 = null;
+type_t* builtin_bool = null;
 //#endregion
 
 static void print_indent(int indent)
@@ -100,9 +105,16 @@ static void print_type_ref(u32 indent, type_ref_t* type)
             print_expr(indent, type->array_len);
         indent--;
     }
+    else if (type->is_ptr) {
+        print_indent(indent);
+        printf("- ptr?: %s\n", type->is_ptr ? "true" : "false");
+        print_indent(indent);
+        printf("- ptr to:\n");
+        indent++;
+            print_type_ref(indent, type->rhs);
+        --indent;
+    }
 
-    print_indent(indent);
-    printf("- ptr?: %s\n", type->is_ptr ? "true" : "false");
 }
 
 static void print_expr(int indent, expr_t* expr)
@@ -337,16 +349,34 @@ void print_fn(fn_t* fn)
     printf("ENDFUNCTION %s\n\n", str_to_cstr(&fn->name));
 }
 
-// TODO: PRINT TYPE
-// TODO: Allow pointer types
-// TODO: Allow inline functions
-
 void print_type(type_t* t)
 {
     u32 indent = 0;
     printf("TYPE %s (size: %d)\n", str_to_cstr(&t->name), t->size_of_type);
+    print_indent(++indent);
+        printf("Fields:\n");
+        ++indent;
+            u32 _count;
+            for_array(&t->fields, field_t)
+                print_indent(indent);
+                printf("%s: \n", str_to_cstr(&e->name));
+                ++indent;
+                    print_type_ref(indent, &e->type);
+                --indent;
+            }
+        print_indent(--indent);
+        printf("Traits: (TODO)\n");
+        // TODO: Print Traits
+    print_indent(--indent);
 
     printf("ENDTYPE\n\n");
+}
+
+void print_enum(enum_t* e)
+{
+    u32 indent = 0;
+    printf("ENUM %s (count: %d)\n", str_to_cstr(&e->name), e->case_count);
+    printf("ENDENUM\n\n");
 }
 
 void parser_debug_file(file_t* ast)
@@ -363,8 +393,7 @@ void parser_debug_file(file_t* ast)
                 print_type(&sym->_type);
             } break;
             case SYMBOL_ENUM: {
-                log_fatal("PRINTING ENUM IS NOT IMPLEMENTED YET");
-                //print_enum(&sym->_enum);
+                print_enum(&sym->_enum);
             } break;
             case SYMBOL_UNION: {
                 log_fatal("PRINTING UNION IS NOT IMPLEMENTED YET");
@@ -491,6 +520,17 @@ void recover_until_next_rbrace(void)
     }
     advance();
 
+}
+
+void recover_until_(token_type_e t)
+{
+    token_t* cur = get_cur();
+    if (cur == null) return retreat();
+    while (cur->type != t) {
+        if (cur->type == TOKEN_EOF) break;
+        cur = get_next();
+    }
+    advance();
 }
 
 void recover_until_newline(void)
@@ -969,8 +1009,11 @@ expr_t* parse_expr(void)
             if (cur->type == TOKEN_EOF) {
                 make_error("Missing closing bracket ('}') after block expression", cur->span); break;
             }
-            stmt_t** stmt_slot = array_append(&result->block.stmts);
-            *stmt_slot = parse_stmt();
+            stmt_t* s = parse_stmt();
+            if (s) {
+                stmt_t** stmt_slot = array_append(&result->block.stmts);
+                *stmt_slot = s;
+            }
             cur = get_cur();
         }
         advance();
@@ -979,53 +1022,7 @@ expr_t* parse_expr(void)
     return parse_or();
 }
 
-type_ref_t* parse_type(void)
-{
-    token_t* cur = get_cur();
-    if (cur->type == TOKEN_LBRACKET) {
-        cur = get_next();
-        expr_t* array_len = null;
-        if (cur->type != TOKEN_RBRACKET) {
-            array_len = parse_expr();
-        }
-        if (!expect(TOKEN_RBRACKET, "Expected closing bracket after array len")) { return null; }
-        type_ref_t* rhs = parse_type();
-        type_ref_t* result = arena_alloc(&arena, sizeof(type_ref_t));
-        result->is_array = true; result->array_len = array_len;
-        result->resolved = rhs->resolved; result->rhs = rhs;
-        result->loc = cur->span;
-        result->inferred = false;
-        return result;
-    } 
-    else if (cur->type == TOKEN_IDENT) {
-        type_ref_t* result = arena_alloc(&arena, sizeof(type_ref_t));
-        result->is_ptr = false; 
-        result->is_array = false; result->array_len = null; 
-        symbol_t* sym = resolve_symbol(cur->value.string_value); 
-        if (sym == null || sym->kind != SYMBOL_TYPE) {
-            result->resolved = false;
-            result->ident = cur->value.string_value;
-        } else {
-            result->resolved_type = &sym->_type;
-            result->resolved = true;
-        }
-        result->loc = cur->span;
-        result->inferred = false;
-        advance();
-        return result; 
-    } else if (cur->type == TOKEN_BAND) {
-        type_ref_t* result = arena_alloc(&arena, sizeof(type_ref_t));
-        result->is_ptr = true;
-        advance();
-        type_ref_t* rhs = parse_type();
-        result->is_array = false; result->is_ptr = true; result->array_len = 0;
-        result->resolved = rhs->resolved; result->rhs = rhs;
-        result->loc = cur->span; result->inferred = false;
-        return result;
-    }
-    make_error("Expected a type here", cur->span);
-    return null;
-}
+type_ref_t* parse_type(void);
 
 bool parse_type_inline(type_ref_t* result, bool custom_error_message)
 {
@@ -1048,7 +1045,7 @@ bool parse_type_inline(type_ref_t* result, bool custom_error_message)
         result->is_ptr = false; 
         result->is_array = false; result->array_len = null; 
         symbol_t* sym = resolve_symbol(cur->value.string_value); 
-        if (sym == null || sym->kind != SYMBOL_TYPE) {
+        if (sym == null || sym->kind > SYMBOL_ENUM) {
             result->resolved = false;
             result->ident = cur->value.string_value;
         } else {
@@ -1071,6 +1068,13 @@ bool parse_type_inline(type_ref_t* result, bool custom_error_message)
     if (!custom_error_message) make_error("Expected a type here", cur->span);
     result->inferred = true;
     return false;
+}
+
+type_ref_t* parse_type(void)
+{
+    type_ref_t* result = arena_alloc(&arena, sizeof(type_ref_t));
+    parse_type_inline(result, false);
+    return result;
 }
 
 stmt_t* parse_let(void)
@@ -1169,24 +1173,39 @@ stmt_t* parse_return(bool is_yield)
 
 stmt_t* parse_const_decl(token_t* ident)
 {
-    stmt_t* const_decl_stmt = arena_alloc(&arena, sizeof(stmt_t));
-    const_decl_stmt->type = STMT_LET;
-    const_decl_stmt->loc = ident->span;
-    const_decl_stmt->let_stmt.is_const = true;
-    const_decl_stmt->let_stmt.ident = ident->value.string_value;
-
     token_t* cur = get_next();
-    if (cur->type == TOKEN_COLON) {
-        // no type provided
-        const_decl_stmt->let_stmt.type.inferred = true;
-        cur = get_next();
-    } else {
-        parse_type_inline(&const_decl_stmt->let_stmt.type, false);
-        expect(TOKEN_COLON, "Expected ':' after type in constant var declaration");
+    if (!expect(TOKEN_COLON, "Expected '::' after identifier")) {
+        recover_until_next_semicolon(); return null;
     }
 
-    const_decl_stmt->let_stmt.initializer = parse_expr();
-    return const_decl_stmt;
+    cur = get_cur();
+    switch (cur->type) {
+        case TOKEN_ENUM: {
+            parse_enum(ident);
+            return null;
+        }
+        case TOKEN_STRUCT: {
+            parse_struct(ident);
+            return null;
+        }
+        case TOKEN_INLINE: {
+            parse_fn(ident, true);
+            return null;
+        } break;
+        case TOKEN_FN: {
+            parse_fn(ident, false);
+            return null;
+        } break;
+        default: {
+            stmt_t* result = arena_alloc(&arena, sizeof(stmt_t));
+            result->type = STMT_LET;
+            result->loc = ident->span;
+            result->let_stmt.is_const = true;
+            result->let_stmt.ident = ident->value.string_value;
+            result->let_stmt.initializer = parse_expr();
+            return result;
+        }
+    }
 }
 
 stmt_t* parse_stmt(void) 
@@ -1213,13 +1232,14 @@ stmt_t* parse_stmt(void)
     }
     expr_t* lhs = parse_expr();
     token_t* cur = get_cur();
+    token_type_e typ = cur->type;
     stmt_t* result = arena_alloc(&arena, sizeof(stmt_t));
-    if (cur->type >= TOKEN_PLUS_EQ && cur->type <= TOKEN_ASSIGN) {
-        bin_expr_e kind = cur->type - TOKEN_PLUS_EQ;
+    if (typ >= TOKEN_PLUS_EQ && typ <= TOKEN_ASSIGN) {
+        bin_expr_e kind = typ - TOKEN_PLUS_EQ;
         advance();
         expr_t* rhs = parse_expr();
         expr_t* expr = null;
-        if (cur->type == TOKEN_ASSIGN) {
+        if (typ == TOKEN_ASSIGN) {
             expr = rhs;
         } else {
             expr = make_bin_expr(lhs, rhs, kind, cur->span); 
@@ -1239,7 +1259,54 @@ stmt_t* parse_stmt(void)
     return result;
 }
 
-// TODO: update struct parsing to produce real types
+void parse_enum(token_t* ident)
+{
+    //if (map_gets(&parser.cur_scope->syms, ident->value.string_value) != null) {
+    //    make_error("Symbol with that name already exists", ident->span); recover_until_next_rbrace(); return;
+    //}
+    advance();
+    if (!expect(TOKEN_LBRACE, "Expected '{' after enum declaration")) {
+        recover_until_newline(); return;
+    }
+    token_t* cur = get_cur();
+    symbol_t* s = arena_alloc(&arena, sizeof(symbol_t));
+    s->kind = SYMBOL_ENUM;
+    enum_t* e = &s->_enum;
+    e->case_count = 0;
+    e->cases = (map_t) {0};
+    e->name = ident->value.string_value;
+
+    while (cur->type != TOKEN_RBRACE) {
+        if (cur->type != TOKEN_IDENT) {
+            make_error("Expected identifier as an enum case", cur->span);
+            recover_until_(TOKEN_COMMA); cur = get_cur(); continue;
+        }
+        str_t k = cur->value.string_value;
+        if (map_gets(&e->cases, k) != null) {
+            make_error("Case already exists in enum", cur->span);
+            recover_until_(TOKEN_COMMA); cur = get_cur(); continue;
+        }
+        map_sets(&e->cases, k, (void*)e->case_count);
+        e->case_count++;
+        if (e->case_count == UINT16_MAX) {
+            make_error("More than 655356 tokens are not allowed", cur->span);
+            recover_until_next_rbrace(); return;
+        }
+        cur = get_next();
+        if (cur->type != TOKEN_COMMA) {
+            if (peek()->type == TOKEN_RBRACE) break;
+            make_error("Unexpected token in enum", cur->span);
+            recover_until_(TOKEN_COMMA);
+            cur = get_cur();
+            continue;
+        }
+        cur = get_next();
+    }
+    // skip RBRACE
+    advance();
+    map_sets(&parser.cur_scope->syms, e->name, s);
+}
+
 void parse_struct(token_t* ident)
 {
     advance();
@@ -1275,6 +1342,20 @@ void parse_struct(token_t* ident)
     // skip }
     advance();
     add_type(ident->value.string_value, 0, fields, ident->span);
+}
+
+void scope_push()
+{
+    scope_t* scope = arena_alloc(&arena, sizeof(scope_t));
+    scope->parent = parser.cur_scope;
+    scope->num_vars = 0;
+    scope->syms = (map_t){0};
+    parser.cur_scope = scope;
+}
+
+void scope_pop()
+{
+    parser.cur_scope = parser.cur_scope->parent;
 }
 
 void parse_fn(token_t* ident, bool is_inline)
@@ -1322,8 +1403,12 @@ void parse_fn(token_t* ident, bool is_inline)
     fn->body = array_init(sizeof(stmt_t*));
     if (next->type == TOKEN_ARROW) {
         // parse return type
-        advance();
-        parse_type_inline(&fn->return_type, false);
+        next = get_next();
+        if (next->type == TOKEN_LBRACE) {
+            fn->return_type.inferred = true;
+        } else {
+            parse_type_inline(&fn->return_type, false);
+        }
         next = get_cur();
     } 
 
@@ -1338,22 +1423,26 @@ void parse_fn(token_t* ident, bool is_inline)
         recover_until_next_semicolon(); return;
     }
     next = get_next();
+    scope_push();
     while (next->type != TOKEN_RBRACE) {
         if (next->type == TOKEN_EOF) {
             make_error("Missing } after function body", next->span); goto end;
         }
-        stmt_t** stmt_slot = array_append(&fn->body);
-        *stmt_slot = parse_stmt();
+        stmt_t* s = parse_stmt();
+        if (s) {
+            stmt_t** stmt_slot = array_append(&fn->body);
+            *stmt_slot = s;
+        }
         next = get_cur();
     }
+    scope_pop();
     advance();
 end:
-    map_sets(&parser.cur_scope->syms, ident->value.string_value, s);
+    map_sets(&parser.cur_scope->syms, fn->name, s);
 }
 
 void parse_tl_decl(token_t* ident)
 {
-    // TODO: Generics
     if (resolve_symbol(ident->value.string_value) != null) {
         make_error("Symbol with this name already exists", ident->span);
         recover_until_next_semicolon();
@@ -1371,9 +1460,7 @@ void parse_tl_decl(token_t* ident)
     } else if (next->type == TOKEN_STRUCT) {
         return parse_struct(ident);
     } else if (next->type == TOKEN_ENUM) {
-        //return parse_enum(ident);
-        log_fatal("parsing ENUM is not implemented yet");
-        exit(-4);
+        return parse_enum(ident);
     } else if (next->type == TOKEN_TRAIT) {
         //return parse_trait(ident);
         log_fatal("parsing TRAIT is not implemented yet");
@@ -1423,6 +1510,7 @@ void register_basic_types(void)
     builtin_u32 = add_builtin_type(make_str("u32", 3), 4);
     builtin_u16 = add_builtin_type(make_str("u16", 3), 2);
     builtin_u8 = add_builtin_type(make_str("u8", 2), 1);
+    builtin_bool = add_builtin_type(make_str("bool", 4), 1);
 }
 
 file_t parser_parse()

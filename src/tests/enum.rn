@@ -1,0 +1,14 @@
+player_state :: enum {
+    STATE_LOADING,
+    STATE_MAIN_MENU,
+    STATE_SETTINGS,
+    STATE_LOAD_MAP,
+    STATE_PLAY,
+    STATE_IN_AIR,
+    STATE_ON_GROUND,
+    STATE_HEALING,
+}
+
+main :: fn() => i32 {
+    s = player_state.STATE_LOADING;
+}
