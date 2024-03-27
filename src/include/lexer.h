@@ -6,6 +6,7 @@
 typedef enum token_type_e token_type_e;
 
 typedef union {
+    uint64_t uint_value;
     int64_t int_value;
     double double_value;
     str_t string_value;
@@ -98,6 +99,7 @@ enum token_type_e {
     TOKEN_IMPORT,
     TOKEN_LET,
     TOKEN_MATCH,
+    TOKEN_NULL,
     TOKEN_RETURN,
     TOKEN_SELFVAL,      // self
     TOKEN_STRUCT,
@@ -188,6 +190,7 @@ const char* token_type_strings[] = {
     "TOKEN_IMPORT",
     "TOKEN_LET",
     "TOKEN_MATCH",
+    "TOKEN_NULL",
     "TOKEN_RETURN",
     "TOKEN_SELFVAL",      // self
     "TOKEN_STRUCT",

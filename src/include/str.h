@@ -3,8 +3,8 @@
 #include <stdbool.h>
 
 typedef struct {
-    char* data;
     uint16_t len;
+    char* data;
 } str_t;
 
 inline str_t make_str(char* str, uint16_t len)

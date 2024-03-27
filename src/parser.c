@@ -307,13 +307,13 @@ static void print_statement(u32 indent, stmt_t* stmt)
         case STMT_LET: {
             printf("- let statement:\n");
             print_indent(++indent);
-                char* ident = str_to_cstr(&stmt->let_stmt.ident);
+                char* ident = str_to_cstr(&stmt->let_stmt.var->name);
                 printf("- ident: %s\n", ident);
                 arena_free_last(&arena);
                 print_indent(indent);
                 printf("- type:\n");
                 ++indent;
-                    print_type_ref(indent, &stmt->let_stmt.type);
+                    print_type_ref(indent, &stmt->let_stmt.var->type);
                 --indent;
                 print_indent(indent);
                 printf("- initializer: %s", stmt->let_stmt.initializer==null ? "empty\n" : "\n");
@@ -352,7 +352,7 @@ void print_fn(fn_t* fn)
 void print_type(type_t* t)
 {
     u32 indent = 0;
-    printf("TYPE %s (size: %d)\n", str_to_cstr(&t->name), t->size_of_type);
+    printf("TYPE %s (size: %d)\n", str_to_cstr(&t->name), t->size);
     print_indent(++indent);
         printf("Fields:\n");
         ++indent;
@@ -602,11 +602,11 @@ type_t* add_type(str_t ident, u32 size, array_t fields, span_t loc)
 {
     symbol_t* s = arena_alloc(&arena, sizeof(symbol_t));
     s->kind = SYMBOL_TYPE;
-    s->_type.size_of_type = size;
+    s->_type.size= size;
     s->_type.fields = fields;
-    s->_type.loc = loc,
     s->_type.traits = array_init(sizeof(trait_t));
     s->_type.name = ident;
+    s->loc = loc,
     map_sets(&parser.cur_scope->syms, ident, s);
     return &s->_type;
 }
@@ -614,6 +614,21 @@ type_t* add_type(str_t ident, u32 size, array_t fields, span_t loc)
 type_t* add_builtin_type(str_t ident, u32 size)
 {
     return add_type(ident, size, array_init(0), LOC(0, 0, 0));
+}
+
+scope_t* scope_push()
+{
+    scope_t* scope = arena_alloc(&arena, sizeof(scope_t));
+    scope->parent = parser.cur_scope;
+    scope->num_vars = 0;
+    scope->syms = (map_t){0};
+    parser.cur_scope = scope;
+    return scope;
+}
+
+void scope_pop()
+{
+    parser.cur_scope = parser.cur_scope->parent;
 }
 
 // todo: add support for importing libraries (directories)
@@ -996,6 +1011,10 @@ expr_t* parse_expr(void)
         advance();
         return make_post_expr(&cur->value, POST_TRUE, POST_NONE, cur->span);
     } 
+    else if (cur->type == TOKEN_NULL) {
+        advance();
+        return make_post_expr(&cur->value, POST_NULL, POST_NONE, cur->span);
+    }
     else if (cur->type == TOKEN_FALSE) {
         advance();
         return make_post_expr(&cur->value, POST_FALSE, POST_NONE, cur->span);
@@ -1005,6 +1024,8 @@ expr_t* parse_expr(void)
         result->loc = cur->span;
         result->block.stmts = array_init(sizeof(stmt_t*));
         cur = get_next(); 
+
+        result->block.scope = scope_push();
         while (cur->type != TOKEN_RBRACE) {
             if (cur->type == TOKEN_EOF) {
                 make_error("Missing closing bracket ('}') after block expression", cur->span); break;
@@ -1016,6 +1037,8 @@ expr_t* parse_expr(void)
             }
             cur = get_cur();
         }
+        scope_pop();
+
         advance();
         return result;
     }
@@ -1081,36 +1104,53 @@ stmt_t* parse_let(void)
 {
     token_t* let = get_cur();
     token_t* cur = get_next();
+    span_t let_loc = let->span;
+    span_t ident_loc = cur->span;
     if (cur->type != TOKEN_IDENT) {
         make_error("Expected identifier after let", cur->span);
         return null;
     }
 
-    stmt_t* let_stmt = arena_alloc(&arena, sizeof(stmt_t));
-    let_stmt->type = STMT_LET;
-    let_stmt->let_stmt.ident = cur->value.string_value;
-    let_stmt->let_stmt.type.inferred = true;
+    symbol_t* s = arena_alloc(&arena, sizeof(symbol_t));
+    s->kind = SYMBOL_VAR;
+    s->loc = ident_loc;
+    s->_var.name = cur->value.string_value;
+    s->_var.is_const = false;
+    s->_var.type.inferred = true;
+    s->_var.type.loc = ident_loc;
+    stmt_t* result = arena_alloc(&arena, sizeof(stmt_t));
+    result->type = STMT_LET;
+    result->loc = let_loc;
+    result->let_stmt.var = &s->_var;
+    result->let_stmt.initializer = null;
+
     cur = get_next();
     if (cur->type == TOKEN_COLON) {
+        s->_var.type.inferred = false;
         advance();
-        bool ok = parse_type_inline(&let_stmt->let_stmt.type, true); 
+        bool ok = parse_type_inline(&s->_var.type, true); 
         if (!ok) {
-            make_error_h("Expected a type here", get_previous()->span, "Remove this ':' or provide a type after it", cur->span); 
+            make_error_h("Expected a type here", get_previous()->span, "Remove this ':' or provide a type after it", ident_loc); 
         } 
         cur = get_cur();    
     }
 
-    let_stmt->let_stmt.initializer = null;
     if (cur->type == TOKEN_ASSIGN) {
         advance();
-        let_stmt->let_stmt.initializer = parse_expr(); 
-        expect_semicolon(&let->span);
+        result->let_stmt.initializer = parse_expr(); 
+        s->_var.type.infer_from = result->let_stmt.initializer;
+        expect_semicolon(&let_loc);
     } else { 
         expect(TOKEN_SEMICOLON, "Expected initalizer ('=') or ';' in let statement"); 
     };
     
-    let_stmt->loc = let->span;
-    return let_stmt;
+    if (map_gets(&parser.cur_scope->syms, s->_var.name) != null) {
+        make_error("Symbol with that name already exists", ident_loc);
+        return result;
+    }
+    map_sets(&parser.cur_scope->syms, s->_var.name, s);
+
+    return result;
 }
 
 stmt_t* parse_for(void)
@@ -1197,13 +1237,22 @@ stmt_t* parse_const_decl(token_t* ident)
             return null;
         } break;
         default: {
-            stmt_t* result = arena_alloc(&arena, sizeof(stmt_t));
-            result->type = STMT_LET;
-            result->loc = ident->span;
-            result->let_stmt.is_const = true;
-            result->let_stmt.ident = ident->value.string_value;
-            result->let_stmt.initializer = parse_expr();
-            return result;
+            symbol_t* s = arena_alloc(&arena, sizeof(symbol_t));
+            s->loc = ident->span;
+            s->kind = SYMBOL_VAR;
+            s->_var.name = ident->value.string_value;
+            s->_var.is_const = true;
+            s->_var.type.inferred = true;
+            s->_var.type.loc = ident->span;
+
+            stmt_t* r = arena_alloc(&arena, sizeof(stmt_t));
+            r->type = STMT_LET;
+            r->loc  = s->loc;
+            r->let_stmt.var = &s->_var;
+            r->let_stmt.initializer = parse_expr();
+
+            s->_var.type.infer_from = r->let_stmt.initializer;
+            return r;
         }
     }
 }
@@ -1261,9 +1310,6 @@ stmt_t* parse_stmt(void)
 
 void parse_enum(token_t* ident)
 {
-    //if (map_gets(&parser.cur_scope->syms, ident->value.string_value) != null) {
-    //    make_error("Symbol with that name already exists", ident->span); recover_until_next_rbrace(); return;
-    //}
     advance();
     if (!expect(TOKEN_LBRACE, "Expected '{' after enum declaration")) {
         recover_until_newline(); return;
@@ -1271,6 +1317,7 @@ void parse_enum(token_t* ident)
     token_t* cur = get_cur();
     symbol_t* s = arena_alloc(&arena, sizeof(symbol_t));
     s->kind = SYMBOL_ENUM;
+    s->loc = ident->span;
     enum_t* e = &s->_enum;
     e->case_count = 0;
     e->cases = (map_t) {0};
@@ -1313,7 +1360,7 @@ void parse_struct(token_t* ident)
     if (!expect(TOKEN_LBRACE, "Expected '{' after struct declaration")) {
         recover_until_newline(); return;
     }
-    array_t fields = array_init(sizeof(field_t));
+    array_t fields = array_init(sizeof(type_member_t));
     while (true) {
         token_t* ident = get_cur();
         if (ident->type != TOKEN_IDENT) {
@@ -1330,9 +1377,10 @@ void parse_struct(token_t* ident)
             recover_until_next_rbrace();
             return;
         }
-        field_t* f = array_append(&fields);
-        parse_type_inline(&f->type, null);
-        f->name = ident->value.string_value;
+        type_member_t* t = array_append(&fields);
+        parse_type_inline(&t->type, null);
+        t->name = ident->value.string_value;
+        t->offset = 0;
         if (!expect(TOKEN_SEMICOLON, "Expected semicolon after struct field")) {
             arena_free_last(&arena);
             recover_until_next_rbrace();
@@ -1342,20 +1390,6 @@ void parse_struct(token_t* ident)
     // skip }
     advance();
     add_type(ident->value.string_value, 0, fields, ident->span);
-}
-
-void scope_push()
-{
-    scope_t* scope = arena_alloc(&arena, sizeof(scope_t));
-    scope->parent = parser.cur_scope;
-    scope->num_vars = 0;
-    scope->syms = (map_t){0};
-    parser.cur_scope = scope;
-}
-
-void scope_pop()
-{
-    parser.cur_scope = parser.cur_scope->parent;
 }
 
 void parse_fn(token_t* ident, bool is_inline)
@@ -1372,6 +1406,7 @@ void parse_fn(token_t* ident, bool is_inline)
     fn->args = array_init(sizeof(field_t));
     fn->name = ident->value.string_value;
     fn->loc = ident->span;
+    s->loc = fn->loc;
     fn->is_inline = is_inline;
     
     if (peek()->type != TOKEN_RPAREN) {
@@ -1389,6 +1424,7 @@ void parse_fn(token_t* ident, bool is_inline)
             advance();
             field_t* arg = array_append(&fn->args); 
             arg->name = ident->value.string_value;
+            arg->is_const = false;
             parse_type_inline(&arg->type, false);
             
             next = get_cur();
@@ -1423,7 +1459,7 @@ void parse_fn(token_t* ident, bool is_inline)
         recover_until_next_semicolon(); return;
     }
     next = get_next();
-    scope_push();
+    fn->scope = scope_push();
     while (next->type != TOKEN_RBRACE) {
         if (next->type == TOKEN_EOF) {
             make_error("Missing } after function body", next->span); goto end;
@@ -1449,6 +1485,8 @@ void parse_tl_decl(token_t* ident)
         return;
     } 
     token_t* next = get_next();
+    str_t ident_str = ident->value.string_value;
+    span_t ident_span = ident->span;
     if (next->type == TOKEN_INLINE) {
         next = get_next();
         if (next->type != TOKEN_FN) {
@@ -1475,9 +1513,14 @@ void parse_tl_decl(token_t* ident)
         parser.cur_scope->num_vars++;
         symbol_t* s = arena_alloc(&arena, sizeof(symbol_t));
         s->kind = SYMBOL_VAR;
-        s->_var.name = ident->value.string_value;
-        s->_var.type.resolved = false;
-        map_sets(&parser.cur_scope->syms, ident->value.string_value, s);
+        s->_var.name = ident_str;
+        s->_var.is_const = true;
+        s->_var.type.inferred = true;
+        s->_var.type.loc = ident_span;
+        if (map_gets(&parser.cur_scope->syms, ident_str) != null) {
+            make_error("Symbol with that name already exists", ident_span);
+        }
+        map_sets(&parser.cur_scope->syms, ident_str, s);
     }
 }
 

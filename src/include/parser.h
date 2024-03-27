@@ -10,18 +10,17 @@ typedef struct expr_t expr_t;
 typedef struct stmt_t stmt_t;
 typedef struct trait_t trait_t;
 typedef struct field_t field_t;
+typedef struct scope_t scope_t;
+typedef struct symbol_t symbol_t;
 
 struct trait_t{
     array_t fns;
 };
 
-// first, type_t* in fns points to a str_t with the identifier of the expected type
-// later in type resolution type_t* actually begins to point to a valid type from the map
 struct type_t {
-    span_t loc;
     array_t traits;
-    array_t fields;
-    u32 size_of_type;
+    array_t fields; // array of type_member_t
+    u32 size; // size = 0 indicates that the type needs to be finalized
     str_t name;
 };
 
@@ -31,17 +30,25 @@ struct type_ref_t {
     union {
         type_t* resolved_type;
         type_ref_t* rhs;
+        expr_t* infer_from;
         str_t ident;
     };
     bool is_array;
-    expr_t* array_len;
+    expr_t* array_len; // after typechecking the pointer is the value of the array len or 0
     bool is_ptr;
     span_t loc;
 };
 
+typedef struct type_member_t {
+    u16 offset;
+    str_t name;
+    type_ref_t type;
+} type_member_t;
+
 struct field_t {
     str_t name;
     type_ref_t type;
+    bool is_const;
 };
 
 typedef enum {
@@ -56,6 +63,7 @@ typedef enum {
 typedef enum {
     POST_TRUE,
     POST_FALSE,
+    POST_NULL,
     POST_INT,
     POST_FLOAT,
     POST_STR,
@@ -199,16 +207,17 @@ typedef struct {
 
 typedef struct {
     array_t stmts;
+    scope_t* scope;
 } block_expr_t;
 
-typedef struct arms_t {
+typedef struct arm_t {
     expr_t* condition;
     expr_t* block;
 } arm_t;
 
 typedef struct {
     expr_t* val;
-    array_t* arms;
+    array_t* arms; // array_t of arm_t
 } match_expr_t;
 
 typedef struct {
@@ -267,10 +276,8 @@ typedef struct {
 } assign_stmt_t;
 
 typedef struct {
-    str_t ident;
-    type_ref_t type;
+    field_t* var;
     expr_t* initializer;
-    bool is_const;
 } let_stmt_t;
 
 struct stmt_t {
@@ -290,6 +297,8 @@ typedef struct {
     array_t args;
     array_t body;
     type_ref_t return_type;
+    bool returns;
+    scope_t* scope;
     bool is_inline;
     span_t loc;
 } fn_t;
@@ -306,7 +315,7 @@ typedef struct {
     str_t name;
 } union_t;
 
-typedef struct {
+struct symbol_t {
     enum {
         SYMBOL_TYPE, // structs
         SYMBOL_UNION,
@@ -321,7 +330,8 @@ typedef struct {
         field_t _var;
         fn_t _fn;
     };
-} symbol_t;
+    span_t loc;
+};
 
 typedef struct scope_t {
     struct scope_t* parent;

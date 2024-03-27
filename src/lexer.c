@@ -456,6 +456,9 @@ token_t*parse_identifier_or_keyword(void)
         case 'm': {
             CHECK_AND_MAKE_TOKEN("match", 5, TOKEN_MATCH); 
         }
+        case 'n': {
+            CHECK_AND_MAKE_TOKEN("null", 4, TOKEN_NULL);
+        }
         case 'r': {
             CHECK_AND_MAKE_TOKEN("return", 6, TOKEN_RETURN); 
         }
