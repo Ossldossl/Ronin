@@ -1,8 +1,0 @@
-main :: fn(args: []str) => i32 
-{
-    let name = "peter";
-    let hello = "hello";
-    let world = "world";
-    let greeting1 = "hello ${name}";
-    let greeting2 = "${hello + world}, mister ${name}!";
-}

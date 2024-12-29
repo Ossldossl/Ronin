@@ -1,9 +1,0 @@
-package main
-
-main :: fn() => []i32 {
-    let a: [2][3]i16;
-    let b = 34;
-    let c: number = b + 35;
-    let d: number? = c + 451;
-    return d;
-}

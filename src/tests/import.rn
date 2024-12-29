@@ -1,6 +1,0 @@
-import "tests/test_lib"
-//import "if.rn"
-import "F:/Programmieren/cpp/ronin/src/tests/fn.rn"
-import "tests/fib.rn"
-//import "doesnotexist.rn"
-//import "while"
