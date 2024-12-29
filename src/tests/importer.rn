@@ -1,5 +1,0 @@
-import "importee.rn"
-
-main :: fn() => i32 {
-    return importee.do_sth();
-}

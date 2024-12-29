@@ -1,1 +1,0 @@
-"../out/main.exe" build --print-ast "tests/enum.rn"
