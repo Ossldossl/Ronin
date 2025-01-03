@@ -1,0 +1,46 @@
+type Range = struct 
+    low: i64
+    high: i64
+    step: i16
+end
+
+fn __iterate(a: Range) -> i64
+    let i = a.low
+    while i < a.high do
+        yield i
+        i += a.step
+    end
+end
+
+fn range(high: i64, step = 1) -> Range 
+    return Range{high:high, low:0, step: step}
+end
+
+fn range(low: i64, high: i64, step = 1) -> Range 
+    return Range{high:high, low:low, step: step}
+end
+
+-- FizzBuzz
+fn main(args: [String]) -> i64 
+    for i in range(20)
+        let test = if i % == 0 do "hi" else "bye"
+        let array_comprehension = [x+10 for x in range(20)]
+        out = ""
+        if i % 3 == 0 do out.append("Fizz") end
+        if i % 5 == 0 do out.append("Buzz") end
+        if i % 7 == 0 do out.append("Baxx") end
+        if len(out) > 0 do 
+            print(out + "\n")
+        else print(i) end
+    end
+end
+
+const Treenode<T> = struct 
+    left: &TreeNode
+    right: &TreeNode
+    value: @T
+end
+
+function levels(node: TreeNode) -> map[int][int] 
+    
+end

@@ -1,0 +1,56 @@
+# example implementation of the game "24 Points"
+import core/random
+import core/io
+
+Option<T> :: enum
+    Some: T,
+    None,
+end
+
+main :: fn(argv: [Str]) -> i32
+    let running = true
+
+    while running do
+        let valid_numbers = new List<i32>
+        valid_numbers.append(random.randint(1,10)); valid_numbers.append(random.randint(1,10))
+        valid_numbers.append(random.randint(1,10)); valid_numbers.append(random.randint(1,10))
+
+        let term_count = 0
+        while term_count < 3 do
+            # parse term in the form of <number> <op> <number>
+            let term = io.input("your term: ")
+            tokens = term.strip().split(' ')
+            
+            let num1, ok = io.parse_int(tokens[0])
+            if !ok do io.println("Invalid expression. Try again"); continue end
+            if !valid_numbers.contains(num1) do io.println("Can't use ${num1} in expression. Try again"); continue end
+
+            let num2, ok = io.parse_int(tokens[2])
+            if !ok do io.println("Invalid expression. Try again"); continue end
+            if !valid_numbers.contains(num2) do io.println("Can't use ${num2} in expression. Try again"); continue end
+
+            let result: Option<i32> = match tokens[1]
+                "+" => Option.Some(num1 + num2),
+                "-" => Option.Some(num1 - num2),
+                "*" => Option.Some(num1 * num2),
+                "/" => Option.Some(num1 / num2),
+                _ => Option.None,
+            end
+            if result.is_none() do continue end
+
+            term_count += 1
+
+            if term_count == 3 do
+                if result == 24 do
+                    io.println("You Won!")
+                    let continue = input("Continue? (y/n)")
+                    if continue == "y" do break end
+                else do
+                    io.println("Wrong answer! Try again.")
+                    term_count = 0
+                    continue
+                end
+            end
+        end
+    end
+end

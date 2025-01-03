@@ -1,0 +1,7 @@
+
+statement = 
+      'return' expression 
+    | 'yield' expression
+    | ''
+
+expression
