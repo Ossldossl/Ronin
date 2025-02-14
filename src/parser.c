@@ -37,8 +37,16 @@ Token* peek(Parser* p) {
     return array_get(p->tokens, p->cur_tok+1);
 }
 
-bool match(Parser* p, TokenKind expected) {
+bool expect(Parser* p, TokenKind expected) {
     if (peek(p)->kind == expected) {
+        advance(p);
+        return true;
+    }
+    return false;
+}
+
+bool match(Parser* p, TokenKind expected) {
+    if (p->cur->kind == expected) {
         advance(p);
         return true;
     }
@@ -78,7 +86,7 @@ void parse_import(Parser* p, Str8 ident) {
     // validate ending
     char* ending = abs_path+path_len-3;
     if (strcmp(ending, ".rn") != 0) { 
-        make_error(const_str("Imported file must be a valid .rn file"), path->loc); return null;
+        make_error(const_str("Imported file must be a valid .rn file"), path->loc);
     }
     
 compiler_import_file_finalize:
@@ -127,14 +135,256 @@ compiler_import_file_finalize:
     arena_free_last(&arena);
 }
 
-void parse_toplevel_stmt(Parser* p) {
+Expr* parse_if(Parser* p) {
+
+}
+
+Expr* parse_match(Parser* p) {
+    // TODO:
+    log_fatal("parsing match is not implemented yet"); exit(-1);
+}
+
+Expr* parse_block(Parser* p) {
+    log_fatal("parsing block is not implemented yet!"); exit(-1);
+}
+
+inline u8 postfix_binding_power(Token tok) 
+{
+    switch (tok.kind) {
+        case TOKEN_NOT     : return 11;
+        case TOKEN_LBRACKET: return 11;
+        case TOKEN_LPAREN  : return 11;
+             default       : return 0;
+    }
+}
+
+inline u8 prefix_binding_power(Token tok) {
+    switch (tok.kind) {
+        case TOKEN_PLUS : return 9;
+        case TOKEN_MINUS: return 9;
+             default    : return 0;
+    }
+} 
+
+inline u8 infix_binding_power(Token tok, u8* l_bp, u8* r_bp) {
+    switch (tok.kind) {
+        case TOKEN_LOR: {
+            *r_bp = 2;
+            *l_bp = 1;
+            return BINARY_LOR;
+        } break;
+
+        case TOKEN_LAND: {
+            *r_bp = 4;
+            *l_bp = 3;
+            return BINARY_LAND;
+        } break;
+
+        case TOKEN_BOR: {
+            *r_bp = 6;
+            *l_bp = 5;
+            return BINARY_BOR;
+        } break;
+
+        case TOKEN_XOR: {
+            *r_bp = 8;
+            *l_bp = 7;
+            return BINARY_XOR;
+        } break;
+
+        case TOKEN_BAND: {
+            *r_bp = 10;
+            *l_bp = 9;
+            return BINARY_BAND;
+        } break;
+
+        case TOKEN_EQ: {
+            *r_bp = 12;
+            *l_bp = 11;
+            return BINARY_EQ;
+        }
+        case TOKEN_NEQ: {
+            *r_bp = 12;
+            *l_bp = 11;
+            return BINARY_NEQ;
+        }
+
+        case TOKEN_LEQ: {
+            *r_bp = 14;
+            *l_bp = 13;
+            return BINARY_LEQ;
+        } break;
+        case TOKEN_GEQ: {
+            *r_bp = 14;
+            *l_bp = 13;
+            return BINARY_GEQ;
+        } break;
+        case TOKEN_LT: {
+            *r_bp = 14;
+            *l_bp = 13;
+            return BINARY_LT;
+        } break;
+        case TOKEN_GT: {
+            *r_bp = 14;
+            *l_bp = 13;
+            return BINARY_GT;
+        } break;
+        
+        case TOKEN_LSHIFT: {
+            *r_bp = 16;
+            *l_bp = 15;
+            return BINARY_LSHIFT;
+        } break;
+        case TOKEN_RSHIFT: {
+            *r_bp = 16;
+            *l_bp = 15;
+            return BINARY_RSHIFT;
+        } break;
+        
+        case TOKEN_PLUS: {
+            *r_bp = 18;
+            *l_bp = 17;
+            return BINARY_ADD;
+        } break;
+        case TOKEN_MINUS: {
+            *r_bp = 18;
+            *l_bp = 17;
+            return BINARY_SUB;
+        } break;
+
+        case TOKEN_ASTERISK: {
+            *r_bp = 20;
+            *l_bp = 19;
+            return BINARY_MUL;
+        } break;
+        case TOKEN_SLASH: {
+            *r_bp = 20;
+            *l_bp = 19;
+            return BINARY_DIV;
+        } break;
+        case TOKEN_MODULO: {
+            *r_bp = 20;
+            *l_bp = 19;
+            return BINARY_MOD;
+        } break;
+
+        case TOKEN_PERIOD: {
+            *r_bp = 22;
+            *l_bp = 21;
+            return BINARY_MEMBER_ACCESS;
+        } break;
+
+        default: return BINARY_INVALID;
+    }
+}
+
+Expr* parse_expr_bp(Parser* p, u8 min_bp) 
+{
+    if (p->cur->kind == TOKEN_IF) {
+        return parse_if(p);
+    } else if (p->cur->kind == TOKEN_MATCH) {
+        return parse_match(p);
+    } else if (p->cur->kind == TOKEN_DO) {
+        // block
+        return parse_block(p);
+    }
+    Expr* lhs = null;
+    // unary expressions
+    Token* last_tok = p->cur;
+    if (match(p, TOKEN_BAND)) {
+        lhs = arena_alloc(&arena, sizeof(Expr));
+        lhs->kind = EXPR_UNARY;
+        lhs->un.kind = UNARY_ADDRESS_OF;
+        lhs->loc = last_tok->loc;
+        lhs->un.rhs = parse_expr_bp(p, 0);
+    } else if (match(p, TOKEN_NOT)) {
+        lhs = arena_alloc(&arena, sizeof(Expr));
+        lhs->kind = EXPR_UNARY;
+        lhs->un.kind = UNARY_BNOT;
+        lhs->loc = last_tok->loc;
+        lhs->un.rhs = parse_expr_bp(p, 0);
+    } else if (match(p, TOKEN_MINUS)) {
+        lhs = arena_alloc(&arena, sizeof(Expr));
+        lhs->kind = EXPR_UNARY;
+        lhs->un.kind = UNARY_NEGATE;
+        lhs->loc = last_tok->loc;
+        lhs->un.rhs = parse_expr_bp(p, 0);
+    } else if (match(p, TOKEN_PLUS)) {
+        lhs = parse_expr_bp(p, 0);
+    } else if (match(p, TOKEN_LPAREN)) {
+        lhs = parse_expr_bp(p, 0);
+        if (!match(p, TOKEN_RPAREN)) {
+            make_errorh(const_str("Missing closing parenthesis here"), p->cur->loc, const_str("To close this one"), last_tok->loc);
+        }
+    }
+
+    Expr* rhs = null;
+    while (true) {
+        Token op = *peek(p);
+        if (op.kind == TOKEN_EOF) break;
+
+        u8 l_bp = postfix_binding_power(op);
+        // postfix expressions
+        if (l_bp != 0) {
+            if (l_bp < min_bp) break;
+            advance(p);
+
+            Expr* post = arena_alloc(&arena, sizeof(Expr));
+            post->kind = EXPR_POST;
+            post->loc = op.loc;
+            if (op.kind == TOKEN_PLUS && peek(p)->kind == TOKEN_PLUS) {
+                post->post.op_kind = POST_INC;
+                advance(p);
+            } else if (op.kind == TOKEN_MINUS && peek(p)->kind == TOKEN_MINUS) {
+                post->post.op_kind = POST_DEC;
+                advance(p);
+            } else if (op.kind == TOKEN_LPAREN) {
+                Array args = array_init(sizeof(Expr));
+                while (p->cur->kind != TOKEN_RPAREN) {
+                    Expr* arg = parse_expr_bp(p, 0);
+                    Expr* slot = array_append(&args);
+                    memcpy_s(slot, sizeof(Expr), arg, sizeof(Expr));
+                    match(p, TOKEN_COMMA);
+                } advance(p);
+                post->post.op_kind = POST_FN_CALL;
+            }
+            post->post.lhs = lhs;
+            lhs = post;
+            continue;
+        }
+
+        l_bp = 0; u8 r_bp = 0;
+        BinaryKind k = infix_binding_power(op, &l_bp, &r_bp);
+        if (l_bp != 0) {
+            if (l_bp <= min_bp) break;
+            advance(p); // skip op
+            rhs = parse_expr_bp(p, r_bp);
+            Expr* bin_exp = arena_alloc(&arena, sizeof(Expr));
+            bin_exp->kind = EXPR_BINARY;
+            bin_exp->loc = op.loc;
+            bin_exp->bin.lhs = lhs; bin_exp->bin.rhs = rhs;
+            bin_exp->bin.kind = k;
+            lhs = bin_exp; rhs = null;
+            continue;
+        }
+        break;
+    }
+    return lhs;
+}
+
+void parse_toplevel_stmt(Parser* p) { 
     Token* ident = p->cur;
     Token* next = get_next(p);
     if (next->kind == TOKEN_COLON && peek(p)->kind == TOKEN_COLON) {
         advance(p);
-        
+        switch (p->cur->kind) {
+            default: {
+                parse_expr_bp(p, 0);
+            } break;
+            break;
+        }
     } else {
-        make_error("Expected '::' after identifier in global scope", next->loc);
+        make_error(const_str("Expected '::' after identifier in global scope"), next->loc);
     }
 }
 

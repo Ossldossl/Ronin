@@ -39,7 +39,6 @@ typedef enum {
 } ExprKind;
 
 // ==== POST ====
-
 typedef enum {
     POST_TRUE,
     POST_FALSE,
@@ -140,6 +139,7 @@ typedef struct ExprUnary{
 // ==== BINARY ====
 
 typedef enum {
+    BINARY_INVALID,
     BINARY_ADD,
     BINARY_SUB,
     BINARY_MUL,
@@ -160,12 +160,14 @@ typedef enum {
     BINARY_GT,
     BINARY_LEQ,
     BINARY_GEQ,
+    BINARY_MEMBER_ACCESS,
 
     BINARY_AS, // cast
 } BinaryKind;
 
 #ifdef STRINGS_IMPLEMENTATION
 const char* bin_kind_strings[] = {
+    "BINARY_INVALID,"
     "BINARY_ADD",
     "BINARY_SUB",
     "BINARY_MUL",
@@ -186,6 +188,7 @@ const char* bin_kind_strings[] = {
     "BINARY_GT",
     "BINARY_LEQ",
     "BINARY_GEQ",
+    "BINARY_MEMBER_ACCESS",
 
     "BINARY_AS",
 };
@@ -311,16 +314,38 @@ typedef struct {
 } Enum;
 
 typedef struct {
+    Array fields; // array_of Field
+    u32 size; 
+    u8 align;
+
+    u32 hash;
+} Struct;
+
+typedef struct {
     Array members;
     u32 size;
-    Str8 name;
+
+    u32 hash;
 } Union;
 
-typedef struct Scope {
+typedef enum {
+    SYM_FN,
+    SYM_STRUCT,
+    SYM_UNION,
+    SYM_ENUM,
+    SYM_TRAIT,
+    SYM_EXPR,
+} SymKind;
+
+typedef struct Symbol {
+    u32 hash;
+    SymKind kind;
+} Symbol;
+
+struct Scope {
     struct Scope* parent;
-    u16 num_vars;
-    Map syms; // map of symbol_t
-} Scope;
+    Map syms; // map of Symbol
+};
 
 typedef struct Import {
     Str8 ident;

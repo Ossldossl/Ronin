@@ -379,65 +379,69 @@ Token*parse_identifier_or_keyword(Lexer* lx)
     switch (c) {
         case 'a': {
             CHECK_AND_MAKE_TOKEN("as", 2, TOKEN_AS); 
-        }
+        } break;
         case 'b': {
             CHECK_AND_MAKE_TOKEN("break", 5, TOKEN_BREAK); 
-        }
+        } break;
         case 'c': {
             CHECK_AND_MAKE_TOKEN("continue", 8, TOKEN_CONTINUE); 
-        }
+        } break;
         case 'e': {
             CHECK_AND_MAKE_TOKEN("else", 4, TOKEN_ELSE)
             else {
                 CHECK_AND_MAKE_TOKEN("enum", 4, TOKEN_ENUM); 
             }
-        }
+        } break;
+        case 'd': {
+            CHECK_AND_MAKE_TOKEN("do", 2, TOKEN_DO);
+        } break;
         case 'f': {
             CHECK_AND_MAKE_TOKEN("false", 5, TOKEN_FALSE)
             else CHECK_AND_MAKE_TOKEN("fn", 2, TOKEN_FN)
             else CHECK_AND_MAKE_TOKEN("foreign", 7, TOKEN_FOREIGN)
             else CHECK_AND_MAKE_TOKEN("for", 3, TOKEN_FOR);
             
-        }
+        } break;
         case 'i': {
             CHECK_AND_MAKE_TOKEN("if", 2, TOKEN_IF)
             else CHECK_AND_MAKE_TOKEN("in", 2, TOKEN_IN) 
             else CHECK_AND_MAKE_TOKEN("inline", 6, TOKEN_INLINE)
             else CHECK_AND_MAKE_TOKEN("impl", 4, TOKEN_IMPL)
             else CHECK_AND_MAKE_TOKEN("import", 6, TOKEN_IMPORT)
-        }
+        } break;
         case 'l': {
             CHECK_AND_MAKE_TOKEN("let", 3, TOKEN_LET); 
-        }
+        } break;
         case 'm': {
-            CHECK_AND_MAKE_TOKEN("match", 5, TOKEN_MATCH); 
-        }
+            CHECK_AND_MAKE_TOKEN("match", 5, TOKEN_MATCH)
+            else CHECK_AND_MAKE_TOKEN("move", 4, TOKEN_MOVE);
+        } break;
         case 'n': {
-            CHECK_AND_MAKE_TOKEN("null", 4, TOKEN_NULL);
-        }
+            CHECK_AND_MAKE_TOKEN("nil", 4, TOKEN_NIL);
+        } break;
         case 'r': {
             CHECK_AND_MAKE_TOKEN("return", 6, TOKEN_RETURN); 
-        }
+        } break;
         case 's': {
             CHECK_AND_MAKE_TOKEN("self", 4, TOKEN_SELFVAL)
             else CHECK_AND_MAKE_TOKEN("struct", 6, TOKEN_STRUCT)
             
-        }
+        } break;
         case 'S': {
             CHECK_AND_MAKE_TOKEN("Self", 4, TOKEN_SELFTYPE); 
-        }
+        } break;
         case 't': {
             CHECK_AND_MAKE_TOKEN("trait", 5, TOKEN_TRAIT)
             else CHECK_AND_MAKE_TOKEN("true", 4, TOKEN_TRUE)
-        }
+        } break;
         case 'w': {
             CHECK_AND_MAKE_TOKEN("where", 5, TOKEN_WHERE)
             else CHECK_AND_MAKE_TOKEN("while", 5, TOKEN_WHILE);
             
-        } 
+        } break; 
         case 'y': {
             CHECK_AND_MAKE_TOKEN("yield", 5, TOKEN_YIELD); 
-        }
+        } break;
     }
     return parse_identifier(lx);
 }

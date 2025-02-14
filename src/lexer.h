@@ -117,7 +117,9 @@ struct Error {
     X(TOKEN_AS) \
     X(TOKEN_BREAK) \
     X(TOKEN_CONTINUE) \
+    X(TOKEN_DO) \
     X(TOKEN_ELSE) \
+    X(TOKEN_END) \
     X(TOKEN_ENUM) \
     X(TOKEN_FALSE) \
     X(TOKEN_FN) \
@@ -130,7 +132,8 @@ struct Error {
     X(TOKEN_IMPORT) \
     X(TOKEN_LET) \
     X(TOKEN_MATCH) \
-    X(TOKEN_NULL) \
+    X(TOKEN_MOVE) \
+    X(TOKEN_NIL) \
     X(TOKEN_RETURN) \
     X(TOKEN_SELFVAL)       \
     X(TOKEN_STRUCT) \
