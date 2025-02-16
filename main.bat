@@ -1,1 +1,1 @@
-"out\main.exe"
+"out\main.exe" my_test.rn %1 %2

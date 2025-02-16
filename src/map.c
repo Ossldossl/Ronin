@@ -22,15 +22,11 @@ u64 fnv1a(char* start, char* end)
 }
 #endif
 
-void* map_get(Map* root, char* key, u32 len)
+void* map_geth(Map* root, u64 hash)
 {
     if (root->parent != null) {
         while (root->parent) root = root->parent;
     }
-    if (len == 0) {
-        len = strlen(key);
-    }
-    u64 hash = fnv1a(key, key + len-1);
     Map* cur = root;
     while (true) {
         if (cur == null || cur->hash == hash) break;
@@ -38,6 +34,14 @@ void* map_get(Map* root, char* key, u32 len)
     }
     return cur ? cur->value : null;
 }
+
+void* map_get(Map* root, char* key, u32 len) {
+    if (len == 0) {
+        len = strlen(key);
+    }
+    u64 hash = fnv1a(key, key + len-1);
+    return map_geth(root, hash);
+}   
 
 static void rotate_right(Map* x)
 {
@@ -131,15 +135,11 @@ static void rebalance_tree(Map* cur)
     }
 }
 
-void map_set(Map* root, char* key, u32 len, void* value)
+void map_seth(Map* root, u64 hash, void* value)
 {
     if (root->parent != null) {
         while (root->parent) root = root->parent;
     }
-    if (len == 0) {
-        len = strlen(key);
-    }
-    u64 hash = fnv1a(key, key + len-1);
     Map* cur = root;
     Map** place_to_insert = null;
     while (true) {
@@ -169,6 +169,14 @@ void map_set(Map* root, char* key, u32 len, void* value)
     new->is_red = true;
 
     rebalance_tree(new);
+}
+
+void map_set(Map* root, char* key, u32 len, void* value) {
+    if (len == 0) {
+        len = strlen(key);
+    }
+    u64 hash = fnv1a(key, key + len-1);
+    return map_seth(root, hash, value);
 }
 
 void* map_gets(Map* root, Str8 key)

@@ -1,3 +1,4 @@
+#include <stdio.h>
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <shlobj_core.h>
@@ -112,13 +113,15 @@ char* path_to_absolute(char* path, u32 len, u32* path_len)
 
 Str8 get_dir_name(char* file_path) 
 {
+    char buf[256];
+    char* last_part = null;
+    u32 len = GetFullPathNameA(file_path, 256, &buf, &last_part);
+    *last_part = 0; // cut of the end
     Str8 result;
-    result.data = file_path;
-    result.len = strlen(file_path);
-    char* end = result.data + result.len;
-    while (*end != '/' && *end != '\\') {
-        end--; result.len--;
-    }
+    result.len = (u64)last_part - (u64)buf; // -1 because of the zero terminator
+    result.data = malloc(result.len);
+    memcpy_s(result.data, result.len, buf, result.len);
+    result.len -= 1; // cut off zero terminator
     return result;
 }
 

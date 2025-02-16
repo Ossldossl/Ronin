@@ -275,7 +275,6 @@ typedef struct {
 typedef struct Field {
     Str8 name;
     TypeRef type;
-    bool is_const;
 } Field;
 
 typedef struct {
@@ -297,8 +296,8 @@ struct Stmt {
 
 typedef struct {
     Str8 name;
-    Array args;
-    Array body;
+    Array args; // array of field
+    Array body; // array of Stmt*
     TypeRef return_type;
     bool returns;
     Scope* scope;
@@ -328,6 +327,15 @@ typedef struct {
     u32 hash;
 } Union;
 
+typedef struct {
+    Str8 ident;
+    Array constraints;
+} GenericParam;
+
+typedef struct {
+    // TODO: traits
+} Trait;
+
 typedef enum {
     SYM_FN,
     SYM_STRUCT,
@@ -338,8 +346,16 @@ typedef enum {
 } SymKind;
 
 typedef struct Symbol {
-    u32 hash;
+    Str8 name;
     SymKind kind;
+    union {
+        Fn* fn_;
+        Struct* struct_;
+        Union* union_;
+        Enum* enum_;
+        Trait* trait_;
+        Expr* expr_;
+    };
 } Symbol;
 
 struct Scope {

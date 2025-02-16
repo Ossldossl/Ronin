@@ -21,4 +21,3 @@ typedef enum {
     LOG_ERROR,
     LOG_FATAL,
 } log_level_e;
-

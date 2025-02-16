@@ -1,17 +1,146 @@
 #include "parser.h"
 #include "file.h"
+#include <math.h>
+#include <stdarg.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 extern Arena arena;
 extern Compiler compiler;
 
-// DEBUG STUFF
+extern const char* log_levels[];
+
+char* get_line(Str8 file_content, u32 line)
+{
+    int cur = 1;
+    int i = 0;
+    while (true) {
+        char c = file_content.data[i];
+        if (c == '\0' || i >= file_content.len) return null;
+        
+        if (cur == line) {
+            char* start = &file_content.data[i];
+            uint32_t len = 0;
+            while (true) {
+                c = file_content.data[i++];
+                if (c == '\r' || c == '\n' ||c == '\0') {
+                    break;
+                }
+                len++;
+            }
+            char* line = arena_alloc(&arena, len+1);
+            memcpy_s(line, len+1, start, len);
+            line[len] = '\0';
+            return line;
+        }
+
+        if (c == '\r') { 
+            cur++; i++;
+        }
+        if (c == '\n') {
+            cur++;
+        }
+        i++;
+    }
+}
+
+void print_code_line(Str8 file_content, u32 line_number)
+{
+    console_set_color(COLOR_GREY);
+    printf("%d  ", line_number); 
+    console_reset();
+    char* line = get_line(file_content, line_number);
+    if (line == null) {
+        log_error("Line is null!");
+        exit(-4);
+        return;
+    }
+    printf("%s", line);
+    arena_free_last(&arena);
+}
+
+void print_error_msg(Span loc, log_level_e level, char* fmt, ...)
+{
+    console_set_color(COLOR_GREY);
+    console_print_time();
+
+    console_set_color(level+1);
+    console_set_bold();
+    printf("%s", log_levels[level]);
+    console_reset_bold();
+
+    console_set_color(COLOR_GREY);
+    Str8* str = (Str8*)array_get(&compiler.filenames, loc.file_id);
+    printf("%s:%d:%d ", str_to_cstr(str), loc.line, loc.col);
+    console_reset();
+
+    va_list args; va_start(args, fmt);
+    vprintf(fmt, args);
+    va_end(args);
+    
+    printf("\n");
+}
+
+void print_inline_msg(bool is_hint, Span loc, Str8 text) 
+{
+    printf("\n  "); 
+
+    int digits_of_line_number = log10(loc.line)+1;
+    for (int i = 0; i < loc.col + digits_of_line_number; i++) {
+        printf(" ");
+    }
+
+    console_set_bold(); console_set_color(is_hint ? COLOR_CYAN : COLOR_RED);
+    for (int i = 0; i < loc.len; i++) {
+        printf("^");
+    }
+
+    printf(" -- %s", is_hint ? "Hint: " : "Error: ");
+    printf("%s\n", text.data);
+    console_reset();
+}
 
 [[noreturn]] void print_errors_and_exit(void) {
     u32 _count;
+    u16 last_file = 0;
+    Str8 cur_src = {0};
     for_array(&compiler.errors, Error) 
-        // TODO: error printing
+        if (e->err_loc.file_id != last_file) {
+            Str8* result = array_get(&compiler.sources, e->err_loc.file_id);
+            if (result == null) {
+                log_fatal("File id %d not found!", e->err_loc.file_id);
+                exit(-1);
+            }
+            cur_src = *result;
+            last_file = e->err_loc.file_id;
+        }
+
+        print_error_msg(e->err_loc, e->is_warning ? LOG_WARN : LOG_ERROR, e->err_text.data);
+        if (e->hint_text.len == 0) {
+            print_code_line(cur_src, e->err_loc.line);
+            print_inline_msg(false, e->err_loc, e->err_text);
+            printf("\n"); continue;
+        } 
+        // else
+        if (e->hint_loc.line == e->err_loc.line) {
+            // hint and error are on the same line
+            print_code_line(cur_src, e->err_loc.line);
+            bool hint_first = e->hint_loc.col > e->err_loc.col;
+            if (hint_first) { print_inline_msg(true, e->hint_loc, e->hint_text); }
+            print_inline_msg(false, e->err_loc, e->err_text);
+            if (!hint_first) {
+                print_inline_msg(true, e->hint_loc, e->hint_text);
+            }
+            printf("\n");
+        } else {
+            print_code_line(cur_src, e->err_loc.line);
+            print_inline_msg(false, e->err_loc, e->err_text);
+            printf("\n");
+            print_code_line(cur_src, e->hint_loc.line);
+            print_inline_msg(true, e->hint_loc, e->hint_text);
+            printf("\n");
+        }
     }
 
     exit(-1);
@@ -19,20 +148,83 @@ extern Compiler compiler;
 
 // MAIN PARSER PART
 
+Scope* scope_push(Parser* p) {
+    Scope* result = arena_alloc(&arena, sizeof(Scope));
+    result->parent = p->cur_scope;
+    result->syms = (Map){0};
+    p->cur_scope = result;
+    return result;
+}
+
+void scope_pop(Parser* p) {
+    Scope* prev = p->cur_scope->parent;
+    p->cur_scope = prev;
+}
+
+// sets variable in the current scope
+void scope_seth(Parser* p, u64 hash, void* value) {
+    map_seth(&p->cur_scope->syms, hash, value);
+}
+
+void scope_set(Parser* p, char* key, u32 len, void* value) {
+    map_set(&p->cur_scope->syms, key, len, value);
+}
+
+void scope_sets(Parser* p, Str8 key, void* value) {
+    map_sets(&p->cur_scope->syms, key, value);
+}
+
+void scope_symbol_sets(Parser* p, Str8 key, void* value, SymKind kind){ 
+    Symbol* sym = arena_alloc(&arena, sizeof(Symbol));
+    sym->name = key;
+    sym->fn_ = (Fn*)value; // don't care to what this value is assigned to
+    scope_sets(p, key, sym);
+}
+
+void* scope_geth(Parser* p, u64 hash) {
+    Scope* cur = p->cur_scope;
+    do {
+        void* result = map_geth(&cur->syms, hash);
+        if (result) return result;
+        cur = cur->parent;
+    } while (cur != null);
+    return null;
+}
+
+void* scope_get(Parser* p, char* key, u32 len) {
+    Scope* cur = p->cur_scope;
+    do {
+        void* result = map_get(&cur->syms, key, len);
+        if (result) return result;
+        cur = cur->parent;
+    } while (cur != null);
+    return null;
+}
+
+void* scope_gets(Parser* p, Str8 key) {
+    Scope* cur = p->cur_scope;
+    do {
+        void* result = map_gets(&cur->syms, key);
+        if (result) return result;
+        cur = cur->parent;
+    } while (cur != null);
+    return null;
+}
+
 // returns true on eof;
-bool advance(Parser* p) {
+static bool advance(Parser* p) {
     if (p->cur->kind == TOKEN_EOF) return true;
     p->cur_tok += 1;
     p->cur = array_get(p->tokens, p->cur_tok);
     return false;
 }
 
-Token* get_next(Parser* p) {
+static Token* get_next(Parser* p) {
     advance(p);
     return p->cur;
 }
 
-Token* peek(Parser* p) {
+static Token* peek(Parser* p) {
     if (p->cur->kind == TOKEN_EOF) return p->cur;
     return array_get(p->tokens, p->cur_tok+1);
 }
@@ -111,13 +303,17 @@ compiler_import_file_finalize:
         // read file
         char* file_content;
         u64 file_size = read_file(abs_path, &file_content);
-        u16 file_id = compiler.cur_file_id++;
+        Str8* src = array_append(&compiler.sources);
+        src->len = file_size; src->data = file_content;
+        Str8* file_name = array_append(&compiler.filenames);
+        file_name->len = path_len; file_name->data = abs_path;
 
         // parse file
         u32 prev_err_count = compiler.errors.used;
-        Array toks = lexer_lex_str(make_str(file_content, file_size), file_id);
+        Array toks = lexer_lex_str(make_str(file_content, file_size), compiler.cur_file_id);
         Module* imported_mod = parse_tokens(toks);
-
+        compiler.cur_file_id += 1;
+        
         // report errors
         if (compiler.errors.used != prev_err_count) {
             print_errors_and_exit();
@@ -318,10 +514,70 @@ Expr* parse_expr_bp(Parser* p, u8 min_bp)
         }
     }
 
+    if (lhs == null) {
+        // parse literal 
+        switch (p->cur->kind) {
+            case TOKEN_INT_LIT: {
+                lhs = arena_alloc(&arena, sizeof(Expr));
+                lhs->kind = EXPR_POST;
+                lhs->loc = p->cur->loc;
+                lhs->post.op_kind = POST_NONE;
+                lhs->post.val_kind = POST_INT;
+                lhs->post.lhs = null;
+                lhs->post.value._int = p->cur->as._int;
+                advance(p);
+            } break;
+            case TOKEN_FLOAT_LIT: {
+                lhs = arena_alloc(&arena, sizeof(Expr));
+                lhs->kind = EXPR_POST;
+                lhs->loc = p->cur->loc;
+                lhs->post.op_kind = POST_NONE;
+                lhs->post.val_kind = POST_FLOAT;
+                lhs->post.lhs = null;
+                lhs->post.value._double = p->cur->as._double;
+                advance(p);
+            } break;
+            case TOKEN_TRUE: {
+                lhs = arena_alloc(&arena, sizeof(Expr));
+                lhs->kind = EXPR_POST;
+                lhs->loc = p->cur->loc;
+                lhs->post.op_kind = POST_NONE;
+                lhs->post.val_kind = POST_TRUE;
+                lhs->post.lhs = null;
+                lhs->post.value._bool = true;
+                advance(p);
+            } break;
+            case TOKEN_FALSE: {
+                lhs = arena_alloc(&arena, sizeof(Expr));
+                lhs->kind = EXPR_POST;
+                lhs->loc = p->cur->loc;
+                lhs->post.op_kind = POST_NONE;
+                lhs->post.val_kind = POST_FALSE;
+                lhs->post.lhs = null;
+                lhs->post.value._bool = false;
+                advance(p);
+            } break;
+            case TOKEN_STR_LIT: {
+                lhs = arena_alloc(&arena, sizeof(Expr));
+                lhs->kind = EXPR_POST;
+                lhs->loc = p->cur->loc;
+                lhs->post.op_kind = POST_NONE;
+                lhs->post.val_kind = POST_STR;
+                lhs->post.lhs = null;
+                lhs->post.value._str = p->cur->as._str;
+                advance(p);
+            } break;
+            default: {
+                make_error(const_str("Unexpected token"), p->cur->loc);
+                return null;
+            }   
+        }
+    }
+
     Expr* rhs = null;
     while (true) {
-        Token op = *peek(p);
-        if (op.kind == TOKEN_EOF) break;
+        Token op = *p->cur;
+        if (op.kind == TOKEN_EOF || op.kind == TOKEN_SEMICOLON) break;
 
         u8 l_bp = postfix_binding_power(op);
         // postfix expressions
@@ -372,12 +628,114 @@ Expr* parse_expr_bp(Parser* p, u8 min_bp)
     return lhs;
 }
 
+Stmt* parse_stmt(Parser* p) 
+{
+    // TODO STMT
+    return null;
+}
+
+
+void parse_struct(Parser* p, Token* ident, bool is_generic, ArrayOf(GenericParam) generic_over) {
+    // TODO STRUCT
+}
+
+void parse_enum(Parser* p, Token* ident, bool is_generic, ArrayOf(GenericParam) generic_over) {
+    // TODO ENUM
+} 
+
+void parse_union(Parser* p, Token* ident, bool is_generic, ArrayOf(GenericParam) generic_over) {
+    // TODO UNION
+}
+
+void parse_trait(Parser* p, Token* ident, bool is_generic, ArrayOf(GenericParam) generic_over) {
+    // TODO TRAIT
+}
+
+TypeRef parse_type(Parser* p) {
+    TypeRef result = {0};
+    // TODOOOOOOOOO: syntax for references
+    
+}
+
+void parse_fn(Parser* p, Token* ident, bool is_generic, ArrayOf(GenericParam) generic_over) {
+    advance(p);
+    Fn* fn = arena_alloc(&arena, sizeof(Fn));
+    fn->args = array_init(sizeof(Field));
+    fn->is_foreign = fn->is_inline = false;
+    fn->loc = ident->loc;
+    fn->name = ident->as._str;
+    
+    scope_symbol_sets(p, fn->name, fn, SYM_FN);
+
+    // parse args
+    if (!match(p, TOKEN_LPAREN)) {
+        make_error(const_str("Unexpected token"), p->cur->loc);
+        return; // TODO: recover?
+    }
+    while (p->cur->kind != TOKEN_RPAREN) {
+        Field* arg = array_append(&fn->args);
+        Token* ident = p->cur;
+        if (!match(p, TOKEN_IDENT)) {
+            make_error(const_str("Expected identifier as function argument"), p->cur->loc);
+            return;
+        }
+        if (!match(p, TOKEN_COLON)) {
+            // TODO: allow multiple idents per type, like fn(arg1, arg2: i32)
+            make_error(const_str("Expected type after argument identifier"), p->cur->loc);
+            return; 
+        }
+        arg->type = parse_type(p);
+        arg->name = ident->as._str;
+        match(p, TOKEN_COMMA);
+    }
+    if (match(p, TOKEN_ARROW)) {
+        // parse return type
+        fn->return_type = parse_type(p);
+    }
+    
+    // parse statements
+    fn->body = array_init(sizeof(Stmt));
+    fn->scope = scope_push(p);
+    while (p->cur->kind != TOKEN_END) {
+        Stmt* s = parse_stmt(p);
+        if (s) {
+            Stmt** stmt_slot = array_append(&fn->body);
+            *stmt_slot = s;
+        }
+    }
+    if (!match(p, TOKEN_END)) {
+        make_error(const_str("Expected \"end\" here"), p->cur->loc);
+    }
+    scope_pop(p);
+}
+
 void parse_toplevel_stmt(Parser* p) { 
     Token* ident = p->cur;
     Token* next = get_next(p);
+    
+    Array generic_over = {0};
+    bool is_generic = false;
+    if (match(p, TOKEN_LT)) {
+        // TODO: parse generics
+        is_generic = true;
+        generic_over = array_init(sizeof(GenericParam));
+    }
+
     if (next->kind == TOKEN_COLON && peek(p)->kind == TOKEN_COLON) {
-        advance(p);
+        advance(p); advance(p);
         switch (p->cur->kind) {
+            case TOKEN_STRUCT: {
+                return parse_struct(p, ident, is_generic, generic_over);
+            } break;
+            case TOKEN_ENUM: {
+                return parse_enum(p, ident, is_generic, generic_over);
+            } break;
+            case TOKEN_TRAIT: {
+                return parse_trait(p, ident, is_generic, generic_over);
+            } break;
+            case TOKEN_FN: {
+                return parse_fn(p, ident, is_generic, generic_over);
+            } break;
             default: {
                 parse_expr_bp(p, 0);
             } break;
@@ -400,8 +758,11 @@ Module* parse_tokens(Array tokens)
             parse_toplevel_stmt(&parser);
         } else if (tok->kind == TOKEN_IMPORT) {
             parse_import(&parser, null_str);
+        } else if (tok->kind == TOKEN_EOF) {
+            break;
         } else {
             make_error(const_str("unexpected token"), tok->loc);
+            advance(&parser);
         }
     }
     return parser.cur_mod;

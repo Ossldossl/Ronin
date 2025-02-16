@@ -24,6 +24,8 @@ void make_errorhf(Str8 err_msg, Span err_loc, Span hint_loc, const char* format,
 struct Compiler {
     Array errors; // array of Error
     Map imported_files; // map of Module
+    Array sources;
+    Array filenames;
     u16 cur_file_id;
 };
 
@@ -62,6 +64,7 @@ struct Error {
     Span hint_loc; // optional
     Str8 err_text;
     Str8 hint_text;
+    bool is_warning;
 };
 
 #define TOKEN_TYPES \
@@ -77,9 +80,9 @@ struct Error {
     X(TOKEN_LBRACE)       /* {  */ \
     X(TOKEN_RBRACE)       /* }  */ \
     X(TOKEN_PLUS)         /* +  */ \
-    X(TOKEN_INC)          /* ++  */ \
+    X(TOKEN_INC)          /* ++  */\
     X(TOKEN_MINUS)        /* -  */ \
-    X(TOKEN_DEC)          /* --  */ \
+    X(TOKEN_DEC)          /* --  */\
     X(TOKEN_ASTERISK)     /* *  */ \
     X(TOKEN_SLASH)        /* /  */ \
     X(TOKEN_MODULO)       /* %  */ \
@@ -142,6 +145,7 @@ struct Error {
     X(TOKEN_TRUE) \
     X(TOKEN_WHERE) \
     X(TOKEN_WHILE) \
+    X(TOKEN_OWNED) \
     X(TOKEN_YIELD) \
     X(TOKEN_EOF)
 

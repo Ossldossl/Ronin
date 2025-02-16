@@ -1,4 +1,6 @@
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 #include "lexer.h"
 #include "parser.h"
@@ -37,19 +39,42 @@ int main(int argc, char** argv) {
     arena = make_arena();
     compiler.errors = array_init(sizeof(Error));
     compiler.imported_files = (Map){0};
-    compiler.cur_file_id = 1;
+    compiler.filenames = array_init(sizeof(Str8));
+    compiler.sources = array_init(sizeof(Str8));
 
-    /*
+    if (argc < 2) {
+        printf("Usage: ronin <file>");
+        exit(-1);
+    }
+    char* file_name = argv[1];
+
     Str8 dir = get_dir_name(file_name);
-    bool ok = set_cur_dir(dir);
-    arena_free_last(&arena);*/
+    bool ok = set_current_directory(dir);
+    arena_free_last(&arena);
+
+    Str8 input;
+    input.len = read_file(file_name, &input.data);
+
+    Str8* dummy = array_append(&compiler.sources); dummy->len = 0; // so that file ids can start at 1
+    dummy = array_append(&compiler.filenames); dummy->len = 0;
+    compiler.cur_file_id = 1;
+    
+    Str8* src = array_append(&compiler.sources);
+    memcpy_s(src, sizeof(Str8), &input, sizeof(Str8));
+    Str8* fn_str = array_append(&compiler.filenames);
+    fn_str->len = strlen(file_name); fn_str->data = file_name;
+    compiler.cur_file_id++;
     
     bool running = true;
-    while (running) {
-        printf("> ");
-        Str8 input = read_line();
-        Array toks = lexer_lex_str(input, 0);
-        Module* ast = parse_tokens(toks);
-        printf("\n");
+    Array toks = lexer_lex_str(input, 1);
+    if (compiler.errors.used != 0) {
+        // has errors
+        print_errors_and_exit();
     }
+    Module* ast = parse_tokens(toks);
+    if (compiler.errors.used != 0) {
+        // has errors
+        print_errors_and_exit();
+    }
+    printf("\n");
 }

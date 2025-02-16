@@ -11,6 +11,7 @@ extern Arena arena;
 void make_error(Str8 msg, Span err_loc) {
     Error* err = array_append(&compiler.errors);
     err->err_loc = err_loc; err->err_text = msg; err->hint_text.len = 0;
+    err->is_warning = false;
 }
 
 void make_errorf(Span err_loc, const char* format, ...) 
@@ -27,6 +28,7 @@ void make_errorf(Span err_loc, const char* format, ...)
     Error* err = array_append(&compiler.errors);
     err->err_text = result;
     err->err_loc = err_loc;
+    err->is_warning = false;
 }
 
 void make_errorh(Str8 err_msg, Span err_loc, Str8 hint_msg, Span hint_loc) 
@@ -34,6 +36,7 @@ void make_errorh(Str8 err_msg, Span err_loc, Str8 hint_msg, Span hint_loc)
     Error* err = array_append(&compiler.errors);
     err->err_loc = err_loc; err->err_text = err_msg; 
     err->hint_loc = hint_loc; err->hint_text = hint_msg;
+    err->is_warning = false;
 }
 
 void make_errorhf(Str8 err_msg, Span err_loc, Span hint_loc, const char* format, ...) 
@@ -50,6 +53,7 @@ void make_errorhf(Str8 err_msg, Span err_loc, Span hint_loc, const char* format,
     va_end(arg_ptr);
     
     err->hint_loc = hint_loc; err->hint_text = hint_msg; 
+    err->is_warning = false;
 }
 
 Token* make_token_nv(Lexer* lx, TokenKind kind, Span loc) {
@@ -183,6 +187,7 @@ static bool lexer_parse_int(Lexer* lx, u64* result)
     u64 last = 0;
     u32 start_col = lx->col;
     char c = lx->content.data[lx->index];
+    *result = 0;
     while (true) {
         if (c >= '0' && c <= '9') {
             *result *= 10;
@@ -419,6 +424,9 @@ Token*parse_identifier_or_keyword(Lexer* lx)
         case 'n': {
             CHECK_AND_MAKE_TOKEN("nil", 4, TOKEN_NIL);
         } break;
+        case 'o': {
+            CHECK_AND_MAKE_TOKEN("owned", 5, TOKEN_OWNED);
+        } break;
         case 'r': {
             CHECK_AND_MAKE_TOKEN("return", 6, TOKEN_RETURN); 
         } break;
@@ -650,6 +658,7 @@ void serialize_toks(Array toks) {
     for_array(&toks, Token) 
         printf("%s ", token_type_strings[e->kind]);
     }
+    printf("\n");
 }
 
 Array lexer_lex_str(Str8 str, u16 file_id) {

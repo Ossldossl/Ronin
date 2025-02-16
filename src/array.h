@@ -5,6 +5,7 @@
 #define ARRAY_START_SIZE 2
 
 #define for_array(array, type) _count = array_len((array));for(int i=0;i<_count;i++) {type* e = array_get((array),i);
+#define ArrayOf(type) Array
 
 typedef struct {
     u16 element_size;

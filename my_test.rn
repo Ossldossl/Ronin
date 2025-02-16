@@ -1,0 +1,1 @@
+draw_rect :: fn(pos: Vec2, size: Vec2) -> Rect
