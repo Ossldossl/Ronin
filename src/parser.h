@@ -9,6 +9,7 @@ typedef struct ASTNode ASTNode;
 typedef struct Expr Expr;
 typedef struct Scope Scope;
 typedef struct Stmt Stmt;
+typedef struct Type Type;
 
 [[noreturn]] void print_errors_and_exit(void);
 Module* parse_tokens(Array tokens);
@@ -99,7 +100,7 @@ typedef struct TypeRef {
     bool is_ptr;
     union {
         struct TypeRef* ptr;
-        u32* type;
+        Type* type;
     };
     bool is_owned;
 } TypeRef;
@@ -218,8 +219,8 @@ typedef struct {
 
 typedef struct {
     Expr* condition;
-    Stmt* body;
-    Stmt* alternative;
+    Expr* body;
+    Expr* alternative;
 } ExprIf;
 
 struct Expr {
@@ -232,18 +233,19 @@ struct Expr {
         ExprMatch match;
         ExprIf if_expr;
     };
+    bool is_const;
     Span loc;
 };
 
 // === STATEMENTS ===
 typedef enum {
-    STMT_EXPR,
     STMT_ASSIGN,
     STMT_FOR_LOOP,
     STMT_WHILE_LOOP,
     STMT_RETURN,
     STMT_YIELD,
     STMT_LET,
+    STMT_EXPR,
 } StmtKind;
 
 typedef struct {
@@ -264,11 +266,11 @@ typedef struct {
 
 typedef struct {
     Expr* condition;
-    Stmt* body;
+    ExprBlock* body;
 } StmtWhile;
 
 typedef struct {
-    Expr* lhs;
+    Str8 name;
     Expr* rhs;
 } StmtAssign;
 
@@ -337,24 +339,31 @@ typedef struct {
 } Trait;
 
 typedef enum {
-    SYM_FN,
     SYM_STRUCT,
     SYM_UNION,
     SYM_ENUM,
+    SYM_FN,
     SYM_TRAIT,
     SYM_EXPR,
 } SymKind;
+
+struct Type {
+    u32 size; u8 align;
+    union {
+        Struct* struct_;
+        Union* union_;
+        Enum* enum_;
+    };
+};
 
 typedef struct Symbol {
     Str8 name;
     SymKind kind;
     union {
         Fn* fn_;
-        Struct* struct_;
-        Union* union_;
-        Enum* enum_;
         Trait* trait_;
         Expr* expr_;
+        Type* type_;
     };
 } Symbol;
 

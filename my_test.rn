@@ -1,1 +1,5 @@
-draw_rect :: fn(pos: Vec2, size: Vec2) -> Rect
+test :: if true 69 else do 5+4 end
+// draw_rect :: fn(pos: Vec2, size: Vec2) -> Rect
+//     println("Hello, World!")
+//     return Rect(pos.x, pos.y, size.x, size.y);
+// end

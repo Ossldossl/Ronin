@@ -11,6 +11,9 @@ extern Compiler compiler;
 
 extern const char* log_levels[];
 
+TypeRef parse_type(Parser* p);
+Expr* parse_block(Parser* p);
+
 char* get_line(Str8 file_content, u32 line)
 {
     int cur = 1;
@@ -331,8 +334,27 @@ compiler_import_file_finalize:
     arena_free_last(&arena);
 }
 
-Expr* parse_if(Parser* p) {
+Expr* parse_expr_bp(Parser* p, u8 min_bp);
 
+Expr* parse_if(Parser* p) {
+    Token* if_tok = p->cur;
+    advance(p);
+    Expr* if_expr = arena_alloc(&arena, sizeof(Expr));
+    if_expr->kind = EXPR_IF;
+    if_expr->loc = if_tok->loc;
+
+    ExprIf* eif = &if_expr->if_expr;
+    eif->condition = parse_expr_bp(p, 0);
+    eif->body = parse_expr_bp(p, 0);
+    if (match(p, TOKEN_ELSE)) {
+        eif->alternative = parse_expr_bp(p, 0);
+    } else {
+        eif->alternative = null;
+    }
+    if (!match(p, TOKEN_END)) {
+        make_error(const_str("Expected 'end' here"), p->cur->loc);
+    }
+    return if_expr;
 }
 
 Expr* parse_match(Parser* p) {
@@ -340,8 +362,159 @@ Expr* parse_match(Parser* p) {
     log_fatal("parsing match is not implemented yet"); exit(-1);
 }
 
+Stmt* parse_for(Parser* p) {
+
+}
+
+void recover_until_semicolon_or_end(Parser* p) {
+    while (p->cur->kind != TOKEN_SEMICOLON && p->cur->kind != TOKEN_END) {
+        advance(p);
+    }
+    advance(p);
+}
+
+void recover_until_semicolon(Parser* p) {
+    while (p->cur->kind != TOKEN_SEMICOLON) {
+        advance(p);
+    }
+    advance(p);
+}
+
+bool expr_is_const(Parser* p, Expr* ex) {
+    // TODO:
+    log_fatal("Checking if an expr is const is not implemented yet!");
+    return true;
+}
+
+Stmt* parse_stmt(Parser* p) 
+{
+    Token* ident = p->cur;
+    if (match(p, TOKEN_IDENT)) {
+        Token* colon = p->cur;
+        if (match(p, TOKEN_COLON)) {
+            Token* assign_or_colon = p->cur;
+
+            Stmt* s = arena_alloc(&arena, sizeof(Stmt));
+            s->type = STMT_LET;
+            s->loc = colon->loc;
+            if (assign_or_colon->loc.col > s->loc.col) {
+                s->loc.len = assign_or_colon->loc.col - s->loc.col;
+            }
+            
+            if (match(p, TOKEN_ASSIGN)) {
+                s->let_stmt.initializer = parse_expr_bp(p, 0);
+                s->let_stmt.var->name = ident->as._str;
+                s->let_stmt.var->type.type = null;
+            } else if (match(p, TOKEN_COLON)) {
+                // TODO: constant assignment
+                s->let_stmt.initializer = parse_expr_bp(p, 0);
+                if (!expr_is_const(p, s->let_stmt.initializer)) {
+                    make_error(const_str("Expression for constant has to be evaluable at compile time"), s->let_stmt.initializer->loc);
+                    recover_until_semicolon(p);
+                }
+            } else {
+                // parse type
+                s->let_stmt.var->type = parse_type(p);
+                if (match(p, TOKEN_ASSIGN)) {
+                    s->let_stmt.initializer = parse_expr_bp(p, 0);
+                    s->let_stmt.var->name = ident->as._str;
+                } else if (match(p, TOKEN_COLON)) {
+                    // TODO: constant assignment
+                    s->let_stmt.initializer = parse_expr_bp(p, 0);
+                    if (!expr_is_const(p, s->let_stmt.initializer)) {
+                        make_error(const_str("Expression for constant has to be evaluable at compile time"), s->let_stmt.initializer->loc);
+                        recover_until_semicolon(p);
+                    }
+                }
+            }
+            match(p, TOKEN_SEMICOLON);
+            return s;
+        } else if (match(p, TOKEN_ASSIGN)) {
+            Stmt* s = arena_alloc(&arena, sizeof(Stmt));
+            s->type = STMT_ASSIGN;
+            s->loc = ident->loc;
+            s->assign_stmt.name = ident->as._str;
+            s->assign_stmt.rhs = parse_expr_bp(p, 0);
+            match(p, TOKEN_SEMICOLON);
+            return s;
+        }
+        
+        // parse expr
+        Stmt* s = arena_alloc(&arena, sizeof(Stmt));
+        s->type = STMT_EXPR;
+        s->expr = parse_expr_bp(p, 0);
+        s->loc = s->expr->loc;
+        match(p, TOKEN_SEMICOLON);
+        return s;
+    } 
+    else if (p->cur->kind == TOKEN_FOR) {
+        log_fatal("Parsing for is not implemented yet!");
+        exit(-1);
+    } else if (p->cur->kind == TOKEN_WHILE) {
+        Stmt* s = arena_alloc(&arena, sizeof(Stmt));
+        s->type = STMT_WHILE_LOOP; s->loc = p->cur->loc;
+        advance(p); // skip while
+        s->while_loop.condition = parse_expr_bp(p, 0);
+        if (!match(p, TOKEN_DO)) {
+            make_error(const_str("Expected \"do\" after here"), p->cur->loc);
+            recover_until_semicolon_or_end(p);
+        }
+        s->while_loop.body = &parse_block(p)->block; // parse block consumes 'end' 
+        return s;
+    } else if (p->cur->kind == TOKEN_RETURN) {
+        Stmt* s = arena_alloc(&arena, sizeof(Stmt));
+        s->type = STMT_RETURN; s->loc = p->cur->loc;
+        advance(p); // skip return
+        s->expr = parse_expr_bp(p, 0);
+        match(p, TOKEN_SEMICOLON);
+        return s;
+    } else if (p->cur->kind == TOKEN_YIELD) {
+        Stmt* s = arena_alloc(&arena, sizeof(Stmt));
+        s->type = STMT_YIELD; s->loc = p->cur->loc;
+        advance(p); // skip return
+        s->expr = parse_expr_bp(p, 0);
+        match(p, TOKEN_SEMICOLON);
+        return s;
+    }
+
+    Expr* expr = parse_expr_bp(p, 0);
+    if (expr == null) return null;
+
+    Stmt* s = arena_alloc(&arena, sizeof(Stmt));
+    s->type = STMT_EXPR;
+    s->expr = expr;
+    s->loc = s->expr->loc;
+    match(p, TOKEN_SEMICOLON);
+    return s;
+}
+
 Expr* parse_block(Parser* p) {
-    log_fatal("parsing block is not implemented yet!"); exit(-1);
+    Token* do_tok = null;
+    if (p->cur->kind == TOKEN_DO) {
+        do_tok = p->cur;
+        advance(p);
+    }
+    Token* start = p->cur;
+
+    Expr* block_expr = arena_alloc(&arena, sizeof(Expr));
+    block_expr->kind = EXPR_BLOCK;
+    block_expr->block.scope = scope_push(p);
+
+    block_expr->block.stmts = array_init(sizeof(Stmt));
+    while (p->cur->kind != TOKEN_END) {
+        Stmt* s = parse_stmt(p);
+        if (s) {
+            Stmt** stmt_slot = array_append(&block_expr->block.stmts);
+            *stmt_slot = s;
+        }
+    }
+
+    Token* end_token = p->cur;
+    if (!match(p, TOKEN_END)) {
+        make_errorh(const_str("Expected \"end\" here"), p->cur->loc, const_str("To close the block here"), do_tok->loc);
+    }
+    block_expr->loc = do_tok->loc;
+    return block_expr;
 }
 
 inline u8 postfix_binding_power(Token tok) 
@@ -476,6 +649,8 @@ inline u8 infix_binding_power(Token tok, u8* l_bp, u8* r_bp) {
 
 Expr* parse_expr_bp(Parser* p, u8 min_bp) 
 {
+    if (p->cur->kind == TOKEN_END) return null;
+
     if (p->cur->kind == TOKEN_IF) {
         return parse_if(p);
     } else if (p->cur->kind == TOKEN_MATCH) {
@@ -628,13 +803,6 @@ Expr* parse_expr_bp(Parser* p, u8 min_bp)
     return lhs;
 }
 
-Stmt* parse_stmt(Parser* p) 
-{
-    // TODO STMT
-    return null;
-}
-
-
 void parse_struct(Parser* p, Token* ident, bool is_generic, ArrayOf(GenericParam) generic_over) {
     // TODO STRUCT
 }
@@ -654,7 +822,40 @@ void parse_trait(Parser* p, Token* ident, bool is_generic, ArrayOf(GenericParam)
 TypeRef parse_type(Parser* p) {
     TypeRef result = {0};
     // TODOOOOOOOOO: syntax for references
+    if (match(p, TOKEN_OWNED)) {
+        result.is_owned = true;
+    }
+
+    TypeRef* cur = &result;
+    while (match(p, TOKEN_BAND)) {
+        cur->is_ptr = true; 
+        cur->ptr = arena_alloc(&arena, sizeof(TypeRef));
+        *cur->ptr = (TypeRef){0};
+        cur = cur->ptr;
+    }
+
+    if (p->cur->kind != TOKEN_IDENT) {
+        make_error(const_str("Expected identifier for type"), p->cur->loc);
+        return result;
+    }
+    Symbol* type = scope_gets(p, p->cur->as._str);
+    if (type == null) {
+        make_error(const_str("Unknown type"), p->cur->loc);
+        return result;
+    }
+    if (type->kind == SYM_TRAIT) {
+        make_error(const_str("Expected a type, not a trait. Use generics with trait bounds instead"), p->cur->loc);
+        return result;
+    } else if (type->kind == SYM_EXPR || type->kind == SYM_FN) {
+        make_error(const_str("Expected a type here. This is not a type"), p->cur->loc);
+        return result;
+    }
     
+    if (cur->is_ptr) {
+        cur = arena_alloc(&arena, sizeof(TypeRef));
+        cur->is_ptr = false; cur->type = type->type_;
+    }
+    return result;
 }
 
 void parse_fn(Parser* p, Token* ident, bool is_generic, ArrayOf(GenericParam) generic_over) {
